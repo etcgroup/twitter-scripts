@@ -19,17 +19,6 @@ import sys
 import simplejson
 import argparse
 
-# The filter and credentials can be provided as a file
-
-# Primary Filter, can be a comma seperated list.
-PRIMARY_TRACK_LIST = "#hashtags,or,@other,terms"
-
-# Add some credentials
-CONSUMER_KEY = 'xxxxxxxxxxxxxxxxxxxx'
-CONSUMER_SECRET = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-ACCESS_TOKEN = 'xxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-ACCESS_SECRET = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-
 #
 #
 # helper functions
