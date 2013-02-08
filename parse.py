@@ -193,6 +193,8 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 			user_id = user['id']
 
 			retweet_id = tweet['retweeted_status']['id'] if 'retweeted_status' in tweet else None
+			if retweet_id is not None:
+				add_tweet_to_db(tweet['retweet_status'])
 
 			tweet_params = (
 				tweet_id,
