@@ -20,7 +20,7 @@ import datetime
 import MySQLdb
 import getpass
 import argparse
-
+import HTMLParser
 
 #
 #
@@ -51,6 +51,7 @@ MENTIONS_INSERT_STMT = """REPLACE INTO mentions (tweet_id, user_id) VALUES (%s,%
 # globals
 #
 hashtags = {}
+hp = HTMLParser.HTMLParser()
 
 #
 # helper functions
@@ -200,7 +201,7 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 				tweet['in_reply_to_status_id'],
 				tweet['in_reply_to_user_id'],
 				retweet_id,
-				tweet['text'],
+				hp.unescape(tweet['text']),
 				user['followers_count'],
 				user['friends_count'],
 				raw_tweet
@@ -271,6 +272,7 @@ def print_progress():
 #
 #
 # ================================================================
+
 
 
 # db connect
