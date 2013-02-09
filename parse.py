@@ -21,6 +21,7 @@ import MySQLdb
 import getpass
 import argparse
 import HTMLParser
+import time
 
 #
 #
@@ -96,14 +97,31 @@ users_skipped = 0
 tweets_skipped = 0
 hashtags_skipped = 0
 
+user_check_time = 0
+user_insert_time = 0
+tweet_check_time = 0
+tweet_insert_time = 0
+hashtag_use_insert_time = 0
+mention_insert_time = 0
+hashtag_check_time = 0
+hashtag_insert_time = 0
+tweet_read_time = 0
+tweet_process_time = 0
+tweet_parse_time = 0
+start_time = 0
+
 #
 #
 #
 def add_user_to_db(cursor, user, user_id):
 	global users_added, users_skipped
+	global user_check_time, user_insert_time
 
+	start = time.time()
 	cursor.execute(USER_SELECT_STMT, user_id)
 	row = cursor.fetchone()
+	user_check_time += time.time() - start;
+	
 	if row is not None:
 		users_skipped += 1
 	else:
@@ -135,30 +153,39 @@ def add_user_to_db(cursor, user, user_id):
 				user_lang, 
 				user_time_zone, 
 				user_statuses_count)
-
+			
+			start = time.time()
 			cursor.execute(USER_INSERT_STMT, user_params)
+			user_insert_time += time.time() - start
 		else:
 			user_params = (
 				user_id,
 				user['screen_name'], 
 				user['name'])
 			
+			start = time.time()
 			cursor.execute(USER_STUB_INSERT_STMT, user_params)
-			
+			user_insert_time += time.time() - start
 #
 #
 #
 def get_or_add_hashtag(cursor, hashtag):
 	global hashtags_added, hashtags_skipped
+	global hashtag_check_time, hashtag_insert_time
 	
 	httxt = hashtag['text'].lower()
 	ht_id = -1
 	if httxt not in hashtags:
+		start = time.time()
 		cursor.execute(HASHTAG_SELECT_STMT, httxt)
 		row = cursor.fetchone()
+		hashtag_check_time += time.time() - start
+		
 		if row is None:
+			start = time.time()
 			cursor.execute(HASHTAG_INSERT_STMT, httxt)
 			ht_id = cursor.lastrowid	#store the insert id
+			hashtag_insert_time += time.time() - start
 			hashtags_added += 1
 		else:
 			ht_id = row[0]
@@ -179,12 +206,20 @@ def get_or_add_hashtag(cursor, hashtag):
 def add_tweet_to_db(cursor, tweet, raw_tweet):
 	global hashtag_uses_added, tweets_added, mentions_added
 	global tweets_skipped
+	global tweet_check_time, tweet_insert_time
+	global mention_insert_time, hashtag_use_insert_time
 	
 	if 'user' in tweet:
 		tweet_id = tweet['id']
 		
+		start = time.time()
 		cursor.execute(TWEET_SELECT_STMT, tweet_id)
 		row = cursor.fetchone()
+		tweet_check_time += time.time() - start
+		
+		if raw_tweet is None:
+			raw_tweet = simplejson.dumps(tweet)
+		
 		if row is not None:
 			tweets_skipped += 1
 		else:
@@ -194,7 +229,7 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 
 			retweet_id = tweet['retweeted_status']['id'] if 'retweeted_status' in tweet else None
 			if retweet_id is not None:
-				add_tweet_to_db(tweet['retweet_status'])
+				add_tweet_to_db(cursor, tweet['retweeted_status'], None)
 
 			tweet_params = (
 				tweet_id,
@@ -211,7 +246,10 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 				
 			# Insert the tweet
 			try:
+				start = time.time()
 				cursor.execute(TWEET_INSERT_STMT, tweet_params)
+				tweet_insert_time += time.time() - start
+				
 				tweets_added += 1
 			except Exception, e:
 				print "Error inserting tweet: ", e
@@ -236,7 +274,10 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 						ht_id = get_or_add_hashtag(cursor,ht)
 
 						try:
+							start = time.time()
 							cursor.execute(HASHTAG_USES_INSERT_STMT, (tweet_id, ht_id))
+							hashtag_use_insert_time += time.time() - start
+							
 							hashtag_uses_added += 1
 						except Exception, e:
 							print "Error inserting hashtag use: %s", e
@@ -250,7 +291,10 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 						mentions_in_tweet.add(m_user_id)
 
 						try:
+							start = time.time()
 							cursor.execute(MENTIONS_INSERT_STMT, (tweet_id, m_user_id))
+							mention_insert_time += time.time() - start
+							
 							mentions_added += 1
 						except Exception, e:
 							print "Error inserting mention: %s", e
@@ -261,11 +305,20 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 
 
 def print_progress():
+	print "--- Counts ---"
 	print "inserted:", tweets_added, "tweets,", users_added, "users,"
 	print "         ", hashtags_added, "hashtags,", mentions_added, "mentions,", hashtag_uses_added, "hashtag uses"
 	print "  cached:", len(hashtags), "hashtags"
 	print " skipped:", tweets_skipped, "tweets,", users_skipped, "users,"
 	print "         ", hashtags_skipped, "hashtags"
+	
+	print "--- Timing {:0.3f}s (total) ---".format(time.time() - start_time)
+	print "  Totals: {:0.3f}s (read) {:0.3f}s (parse) {:0.3f}s (process)".format(tweet_read_time, tweet_parse_time, tweet_process_time)
+	print "  Tweets: {:0.3f}s (check) {:0.3f}s (insert)".format(tweet_check_time, tweet_insert_time)
+	print "   Users: {:0.3f}s (check) {:0.3f}s (insert)".format(user_check_time, user_insert_time)
+	print "Hashtags: {:0.3f}s (check) {:0.3f}s (insert)".format(hashtag_check_time, hashtag_insert_time)
+	print "Entities: {:0.3f}s (mentions) {:0.3f}s (hashtags)".format(mention_insert_time, hashtag_use_insert_time)
+
 	
 # ================================================================
 #
@@ -298,29 +351,38 @@ except Exception, e:
 print "Parsing %s..."%(args.tweetsfile)
 tweets = []
 with open(args.tweetsfile, "rt") as infile:
+	start_time = time.time()
 	# grab file size
 	infile.seek(0,os.SEEK_END)
 	filesize = infile.tell()
 	infile.seek(0,os.SEEK_SET)
-
+    
 	# start our read loop with valid data
 	tweet = ''
 	tweet_start_found = False
+	start = 0
 	last_parse_position = 0
 	for line in infile:
 
 		if line[0] == '{':
 			# start of tweet
 			tweet_start_found = True
+			start = time.time()
 			tweet = ''
 			tweet += line
 		elif line[0:2] == '},' and tweet_start_found == True:
 			# end of tweet
 			tweet += line[0]
 			tweet_start_found = False
+			tweet_read_time += time.time() - start
+			
+			start = time.time()
 			obj = simplejson.loads(tweet)
-			#print obj
+			tweet_parse_time += time.time() - start;
+			
+			start = time.time()
 			add_tweet_to_db(cur, obj, tweet)
+			tweet_process_time += time.time() - start
 			#tweets.append(obj)
 		elif tweet_start_found == True:
 			# some line in the middle
