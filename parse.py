@@ -23,6 +23,7 @@ import argparse
 import HTMLParser
 import time
 import heapq
+import math
 
 #
 #
@@ -37,8 +38,8 @@ USER_INSERT_STMT = """REPLACE INTO users
 USER_SELECT_STMT = """SELECT id from users where id = (%s) and created_at IS NOT NULL"""
 
 TWEET_INSERT_STMT = """REPLACE INTO tweets
-			(id,user_id,created_at,in_reply_to_status_id,in_reply_to_user_id, retweet_of_status_id, text, followers_count, friends_count, json) 
-			VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+			(id,user_id,created_at,in_reply_to_status_id,in_reply_to_user_id, retweet_of_status_id, text, followers_count, friends_count) 
+			VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 TWEET_SELECT_STMT = """SELECT id FROM tweets WHERE id = (%s)"""
 
 HASHTAG_INSERT_STMT = """INSERT INTO hashtags (string) VALUES (%s)"""
@@ -111,45 +112,47 @@ start_time = 0
 
 tweet_buffer = {}
 user_buffer = {}
+hashtag_use_buffer = []
+mention_buffer = []
 
-TWEETS_TO_BUFFER = 100
-USERS_TO_BUFFER = 100
+BUFFER_SIZE = 100
 
-user_cache = {}
+caches = dict(user={}, tweet={})
+cache_hits = dict(user=0, tweet=0)
 MAX_CACHE_SIZE = 10000
 MIN_CACHE_SIZE = 5000
 
 # Return true if the user is in the cache
-def user_in_cache(user_id):
-	global user_cache_hits, user_cache
+def is_in_cache(cache_name, id):
+	global cache_hits, caches
 	
-	if user_id in user_cache:
+	if id in caches[cache_name]:
 		# increment the hit count
-		user_cache_hits += 1
-		user_cache[user_id] += 1
+		cache_hits[cache_name] += 1
+		caches[cache_name][id] += 1
 		return True
 	return False
 
-def cache_user(user_id):
-	global user_cache
-	user_cache[user_id] = 1
+def add_to_cache(cache_name, id):
+	global caches
+	caches[cache_name][id] = 1
 	
-	if len(user_cache) > MAX_CACHE_SIZE:
-		truncate_user_cache()
+	if len(caches[cache_name]) > MAX_CACHE_SIZE:
+		truncate_cache(cache_name)
 
-def truncate_user_cache():
-	global user_cache
+def truncate_cache(cache_name):
+	global caches
 	new_cache = {}
 	
-	entries = sorted(user_cache.iteritems(), key=lambda pair: pair[1], reverse=True)
+	entries = sorted(caches[cache_name].iteritems(), key=lambda pair: pair[1], reverse=True)
 	
 	for pair in entries:
-		new_cache[pair[0]] = pair[1] / 2
+		new_cache[pair[0]] = math.log(pair[1]) + 1
 		
 		if len(new_cache) > MIN_CACHE_SIZE:
 			break
 	
-	user_cache = new_cache
+	caches[cache_name] = new_cache
 
 # Return true if the user is in the db (or will be)
 def user_in_db(cursor, user_id):
@@ -159,7 +162,7 @@ def user_in_db(cursor, user_id):
 	if user_id in user_buffer:
 		return True
 	
-	if user_in_cache(user_id):
+	if is_in_cache('user', user_id):
 		return True
 	
 	# Then check the db
@@ -176,9 +179,9 @@ def buffer_user(cursor, user_id, user_data):
 	
 	user_buffer[user_id] = user_data
 	
-	cache_user(user_id)
+	add_to_cache('user', user_id)
 	
-	if len(user_buffer) >= USERS_TO_BUFFER:
+	if len(user_buffer) >= BUFFER_SIZE:
 		flush_user_buffer(cursor)
 	
 # Insert all buffered users into the db
@@ -265,7 +268,11 @@ def tweet_in_db(cursor, tweet_id):
 	# first check in buffer
 	if tweet_id in tweet_buffer:
 		return True
-		
+	
+	# then in the cache
+	if is_in_cache('tweet', tweet_id):
+		return True
+	
 	# then check in db
 	start = time.time()
 	cursor.execute(TWEET_SELECT_STMT, tweet_id)
@@ -280,7 +287,9 @@ def buffer_tweet(cursor, tweet_id, tweet_data):
 	
 	tweet_buffer[tweet_id] = tweet_data
 	
-	if len(tweet_buffer) >= TWEETS_TO_BUFFER:
+	add_to_cache('tweet', tweet_id)
+	
+	if len(tweet_buffer) >= BUFFER_SIZE:
 		flush_tweet_buffer(cursor)
 
 # Insert all buffered tweets into the db
@@ -299,13 +308,62 @@ def flush_tweet_buffer(cursor):
 		
 		except Exception, e:
 			print "Error inserting tweets: ", e
+			
+
+# Store the hashtag_use for later inserting into the db
+def buffer_hashtag_use(cursor, hashtag_use):
+	global hashtag_use_buffer
+	
+	hashtag_use_buffer.append(hashtag_use)
+	
+	if len(hashtag_use_buffer) >= BUFFER_SIZE:
+		flush_hashtag_use_buffer(cursor)
+
+# Insert all buffered hashtag_uses into the db
+def flush_hashtag_use_buffer(cursor):
+	global hashtag_use_insert_time, hashtag_uses_added, hashtag_use_buffer
+
+	if len(hashtag_use_buffer) > 0:
+		try:
+			start = time.time()
+			cursor.executemany(HASHTAG_USES_INSERT_STMT, hashtag_use_buffer)
+			hashtag_use_insert_time += time.time() - start
+			
+			hashtag_uses_added += len(hashtag_use_buffer)
+			del hashtag_use_buffer[:]
+		
+		except Exception, e:
+			print "Error inserting hashtag_uses: ", e
+
+# Store the mentions for later inserting into the db
+def buffer_mention(cursor, mention):
+	global mention_buffer
+	
+	mention_buffer.append(mention)
+	
+	if len(mention_buffer) >= BUFFER_SIZE:
+		flush_mention_buffer(cursor)
+
+# Insert all buffered mentions into the db
+def flush_mention_buffer(cursor):
+	global mention_insert_time, mentions_added, mention_buffer
+
+	if len(mention_buffer) > 0:
+		try:
+			start = time.time()
+			cursor.executemany(MENTIONS_INSERT_STMT, mention_buffer)
+			mention_insert_time += time.time() - start
+			
+			mentions_added += len(mention_buffer)
+			del mention_buffer[:]
+		
+		except Exception, e:
+			print "Error inserting mentions: ", e
 #
 #
 #
 def add_tweet_to_db(cursor, tweet, raw_tweet):
-	global hashtag_uses_added, mentions_added
 	global tweets_skipped
-	global mention_insert_time, hashtag_use_insert_time
 	
 	if 'user' in tweet:
 		tweet_id = tweet['id']
@@ -333,8 +391,8 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 				retweet_id,
 				hp.unescape(tweet['text']),
 				user['followers_count'],
-				user['friends_count'],
-				raw_tweet
+				user['friends_count']
+				#raw_tweet
 				)
 				
 			# Insert the tweet
@@ -358,15 +416,9 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 					if htname not in hashtags_in_tweet:
 						hashtags_in_tweet.add(htname)
 						ht_id = get_or_add_hashtag(cursor,ht)
-
-						try:
-							start = time.time()
-							cursor.execute(HASHTAG_USES_INSERT_STMT, (tweet_id, ht_id))
-							hashtag_use_insert_time += time.time() - start
-							
-							hashtag_uses_added += 1
-						except Exception, e:
-							print "Error inserting hashtag use: %s", e
+						
+						buffer_hashtag_use(cursor, (tweet_id, ht_id))
+						
 
 			if 'user_mentions' in entities:
 				tweet_mentions = entities['user_mentions']
@@ -376,14 +428,7 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 					if m_user_id not in mentions_in_tweet:
 						mentions_in_tweet.add(m_user_id)
 
-						try:
-							start = time.time()
-							cursor.execute(MENTIONS_INSERT_STMT, (tweet_id, m_user_id))
-							mention_insert_time += time.time() - start
-							
-							mentions_added += 1
-						except Exception, e:
-							print "Error inserting mention: %s", e
+						buffer_mention(cursor, (tweet_id, m_user_id))
 						
 						# Don't add partial users
 						# add_user_to_db(cursor, mention, m_user_id)
@@ -395,8 +440,8 @@ def print_progress():
 	print "--- Counts ---"
 	print "  inserted:", tweets_added, "tweets,", users_added, "users,"
 	print "           ", hashtags_added, "hashtags,", mentions_added, "mentions,", hashtag_uses_added, "hashtag uses"
-	print "    cached:", len(hashtags), "hashtags", len(user_cache), "users"
-	print "cache hits:", user_cache_hits, "users"
+	print "    cached:", len(hashtags), "hashtags", len(caches['user']), "users", len(caches['tweet']), "tweets"
+	print "cache hits:", cache_hits['user'], "users", cache_hits['tweet'], 'tweets'
 	print "   skipped:", tweets_skipped, "tweets,", users_skipped, "users,"
 	print "           ", hashtags_skipped, "hashtags"
 	
@@ -486,8 +531,10 @@ try:
 				print "%f%% complete..."%(pct_done)
 				print_progress()
 
-		flush_tweet_buffer(cursor)
-		flush_user_buffer(cursor)
+		flush_tweet_buffer(cur)
+		flush_user_buffer(cur)
+		flush_hashtag_use_buffer(cur)
+		flush_mention_buffer(cur)
 		
 		print_progress()
 
