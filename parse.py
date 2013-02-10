@@ -171,7 +171,10 @@ def user_in_db(cursor, user_id):
 	row = cursor.fetchone()
 	user_check_time += time.time() - start;
 	
-	return row is not None
+	if row is not None:
+		add_to_cache('user', user_id)
+		return True
+	return False
 
 # Add the user to the buffer, for later inserting into the db
 def buffer_user(cursor, user_id, user_data):
@@ -279,8 +282,11 @@ def tweet_in_db(cursor, tweet_id):
 	cursor.execute(TWEET_SELECT_STMT, tweet_id)
 	row = cursor.fetchone()
 	tweet_check_time += time.time() - start
-	
-	return row is not None
+
+	if row is not None:
+		add_to_cache('tweet', tweet_id)
+		return True
+	return False
 	
 # Store the tweet for later inserting into the db
 def buffer_tweet(cursor, tweet_id, tweet_data):
