@@ -35,7 +35,7 @@ PARSE_SIZE = 8 * 1024 * 1024
 USER_INSERT_STMT = """REPLACE INTO users 
 			(id,screen_name,name,created_at,location,utc_offset,lang,time_zone,statuses_count) 
 			VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
-USER_SELECT_STMT = """SELECT id from users where id = (%s) and created_at IS NOT NULL"""
+USER_SELECT_STMT = """SELECT id from users where id = (%s)"""
 
 TWEET_INSERT_STMT = """REPLACE INTO tweets
 			(id,user_id,created_at,in_reply_to_status_id,in_reply_to_user_id, retweet_of_status_id, text, followers_count, friends_count) 
