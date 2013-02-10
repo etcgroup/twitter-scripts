@@ -119,8 +119,8 @@ BUFFER_SIZE = 100
 
 caches = dict(user={}, tweet={})
 cache_hits = dict(user=0, tweet=0)
-MAX_CACHE_SIZE = 10000
-MIN_CACHE_SIZE = 5000
+MAX_CACHE_SIZE = 50000
+MIN_CACHE_SIZE = 25000
 
 # Return true if the user is in the cache
 def is_in_cache(cache_name, id):
