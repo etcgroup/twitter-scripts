@@ -22,6 +22,7 @@ import getpass
 import argparse
 import HTMLParser
 import time
+import heapq
 
 #
 #
@@ -30,9 +31,6 @@ import time
 #
 PARSE_SIZE = 8 * 1024 * 1024
 
-USER_STUB_INSERT_STMT = """REPLACE INTO users 
-			(id,screen_name,name) 
-			VALUES (%s,%s,%s)"""
 USER_INSERT_STMT = """REPLACE INTO users 
 			(id,screen_name,name,created_at,location,utc_offset,lang,time_zone,statuses_count) 
 			VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
@@ -96,6 +94,7 @@ hashtag_uses_added = 0
 users_skipped = 0
 tweets_skipped = 0
 hashtags_skipped = 0
+user_cache_hits = 0
 
 user_check_time = 0
 user_insert_time = 0
@@ -110,62 +109,121 @@ tweet_process_time = 0
 tweet_parse_time = 0
 start_time = 0
 
-#
-#
-#
-def add_user_to_db(cursor, user, user_id):
-	global users_added, users_skipped
-	global user_check_time, user_insert_time
+tweet_buffer = {}
+user_buffer = {}
 
+TWEETS_TO_BUFFER = 100
+USERS_TO_BUFFER = 100
+
+user_cache = {}
+MAX_CACHE_SIZE = 10000
+MIN_CACHE_SIZE = 5000
+
+# Return true if the user is in the cache
+def user_in_cache(user_id):
+	global user_cache_hits, user_cache
+	
+	if user_id in user_cache:
+		# increment the hit count
+		user_cache_hits += 1
+		user_cache[user_id] += 1
+		return True
+	return False
+
+def cache_user(user_id):
+	global user_cache
+	user_cache[user_id] = 1
+	
+	if len(user_cache) > MAX_CACHE_SIZE:
+		truncate_user_cache()
+
+def truncate_user_cache():
+	global user_cache
+	new_cache = {}
+	
+	entries = sorted(user_cache.iteritems(), key=lambda pair: pair[1], reverse=True)
+	
+	for pair in entries:
+		new_cache[pair[0]] = pair[1] / 2
+		
+		if len(new_cache) > MIN_CACHE_SIZE:
+			break
+	
+	user_cache = new_cache
+
+# Return true if the user is in the db (or will be)
+def user_in_db(cursor, user_id):
+	global user_check_time
+	
+	# Check the buffer first
+	if user_id in user_buffer:
+		return True
+	
+	if user_in_cache(user_id):
+		return True
+	
+	# Then check the db
 	start = time.time()
 	cursor.execute(USER_SELECT_STMT, user_id)
 	row = cursor.fetchone()
 	user_check_time += time.time() - start;
 	
-	if row is not None:
+	return row is not None
+
+# Add the user to the buffer, for later inserting into the db
+def buffer_user(cursor, user_id, user_data):
+	global user_buffer
+	
+	user_buffer[user_id] = user_data
+	
+	cache_user(user_id)
+	
+	if len(user_buffer) >= USERS_TO_BUFFER:
+		flush_user_buffer(cursor)
+	
+# Insert all buffered users into the db
+def flush_user_buffer(cursor):
+	global user_buffer, users_added, user_insert_time
+	
+	if len(user_buffer) > 0:
+	
+		try:
+			start = time.time()
+			cursor.executemany(USER_INSERT_STMT, user_buffer.values())
+			user_insert_time += time.time() - start
+			
+			users_added += len(user_buffer)
+			user_buffer.clear()
+		except Exception, e:
+			print "Error inserting users: ", e
+#
+#
+#
+def add_user_to_db(cursor, user, user_id):
+	global users_skipped
+
+	if user_in_db(cursor, user_id):
 		users_skipped += 1
 	else:
-		users_added += 1
+		user_created_at = parse_twitter_date(user['created_at'])
+		user_location = user['location']
+		user_utc_offset = user['utc_offset']
+		user_lang = user['lang']
+		user_time_zone = user['time_zone']
+		user_statuses_count = user['statuses_count']
+	
+		user_params = (
+			user_id, 
+			user['screen_name'], 
+			user['name'], 
+			user_created_at, 
+			user_location, 
+			user_utc_offset, 
+			user_lang, 
+			user_time_zone, 
+			user_statuses_count)
 		
-		user_created_at = None
-		user_location = None
-		user_utc_offset = None
-		user_lang = None
-		user_time_zone = None
-		user_statuses_count = None
-		
-		# If this is a full-fledged user record then all this will be present
-		if 'created_at' in user:
-			user_created_at = parse_twitter_date(user['created_at'])
-			user_location = user['location']
-			user_utc_offset = user['utc_offset']
-			user_lang = user['lang']
-			user_time_zone = user['time_zone']
-			user_statuses_count = user['statuses_count']
-		
-			user_params = (
-				user_id, 
-				user['screen_name'], 
-				user['name'], 
-				user_created_at, 
-				user_location, 
-				user_utc_offset, 
-				user_lang, 
-				user_time_zone, 
-				user_statuses_count)
-			
-			start = time.time()
-			cursor.execute(USER_INSERT_STMT, user_params)
-			user_insert_time += time.time() - start
-		else:
-			user_params = (
-				user_id,
-				user['screen_name'], 
-				user['name'])
-			
-			start = time.time()
-			cursor.execute(USER_STUB_INSERT_STMT, user_params)
-			user_insert_time += time.time() - start
+		buffer_user(cursor, user_id, user_params)
 #
 #
 #
@@ -200,29 +258,64 @@ def get_or_add_hashtag(cursor, hashtag):
 
 	return ht_id
 
+# Return true if the tweet is in the db (or will be)
+def tweet_in_db(cursor, tweet_id):
+	global tweet_check_time
+	
+	# first check in buffer
+	if tweet_id in tweet_buffer:
+		return True
+		
+	# then check in db
+	start = time.time()
+	cursor.execute(TWEET_SELECT_STMT, tweet_id)
+	row = cursor.fetchone()
+	tweet_check_time += time.time() - start
+	
+	return row is not None
+	
+# Store the tweet for later inserting into the db
+def buffer_tweet(cursor, tweet_id, tweet_data):
+	global tweet_buffer
+	
+	tweet_buffer[tweet_id] = tweet_data
+	
+	if len(tweet_buffer) >= TWEETS_TO_BUFFER:
+		flush_tweet_buffer(cursor)
+
+# Insert all buffered tweets into the db
+def flush_tweet_buffer(cursor):
+	global tweet_insert_time, tweets_added, tweet_buffer
+
+	if len(tweet_buffer) > 0:
+		
+		try:
+			start = time.time()
+			cursor.executemany(TWEET_INSERT_STMT, tweet_buffer.values())
+			tweet_insert_time += time.time() - start
+			
+			tweets_added += len(tweet_buffer)
+			tweet_buffer.clear()
+		
+		except Exception, e:
+			print "Error inserting tweets: ", e
 #
 #
 #
 def add_tweet_to_db(cursor, tweet, raw_tweet):
-	global hashtag_uses_added, tweets_added, mentions_added
+	global hashtag_uses_added, mentions_added
 	global tweets_skipped
-	global tweet_check_time, tweet_insert_time
 	global mention_insert_time, hashtag_use_insert_time
 	
 	if 'user' in tweet:
 		tweet_id = tweet['id']
 		
-		start = time.time()
-		cursor.execute(TWEET_SELECT_STMT, tweet_id)
-		row = cursor.fetchone()
-		tweet_check_time += time.time() - start
-		
-		if raw_tweet is None:
-			raw_tweet = simplejson.dumps(tweet)
-		
-		if row is not None:
+		if tweet_in_db(cursor, tweet_id):
 			tweets_skipped += 1
 		else:
+			if raw_tweet is None:
+				raw_tweet = simplejson.dumps(tweet)
+			
 			created_at = parse_twitter_date(tweet['created_at'])
 			user = tweet['user']
 			user_id = user['id']
@@ -245,14 +338,7 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 				)
 				
 			# Insert the tweet
-			try:
-				start = time.time()
-				cursor.execute(TWEET_INSERT_STMT, tweet_params)
-				tweet_insert_time += time.time() - start
-				
-				tweets_added += 1
-			except Exception, e:
-				print "Error inserting tweet: ", e
+			buffer_tweet(cursor, tweet_id, tweet_params)
 			
 			# Insert the user for the tweet
 			add_user_to_db(cursor, user, user_id)
@@ -298,19 +384,21 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 							mentions_added += 1
 						except Exception, e:
 							print "Error inserting mention: %s", e
-							
-						add_user_to_db(cursor, mention, m_user_id)
+						
+						# Don't add partial users
+						# add_user_to_db(cursor, mention, m_user_id)
 
 	return None
 
 
 def print_progress():
 	print "--- Counts ---"
-	print "inserted:", tweets_added, "tweets,", users_added, "users,"
-	print "         ", hashtags_added, "hashtags,", mentions_added, "mentions,", hashtag_uses_added, "hashtag uses"
-	print "  cached:", len(hashtags), "hashtags"
-	print " skipped:", tweets_skipped, "tweets,", users_skipped, "users,"
-	print "         ", hashtags_skipped, "hashtags"
+	print "  inserted:", tweets_added, "tweets,", users_added, "users,"
+	print "           ", hashtags_added, "hashtags,", mentions_added, "mentions,", hashtag_uses_added, "hashtag uses"
+	print "    cached:", len(hashtags), "hashtags", len(user_cache), "users"
+	print "cache hits:", user_cache_hits, "users"
+	print "   skipped:", tweets_skipped, "tweets,", users_skipped, "users,"
+	print "           ", hashtags_skipped, "hashtags"
 	
 	print "--- Timing {:0.3f}s (total) ---".format(time.time() - start_time)
 	print "  Totals: {:0.3f}s (read) {:0.3f}s (parse) {:0.3f}s (process)".format(tweet_read_time, tweet_parse_time, tweet_process_time)
@@ -342,60 +430,73 @@ try:
 	
 	# Trick MySQLdb into using 4-byte UTF-8 strings
 	db.query('SET NAMES "utf8mb4"')
+
+	db.query('ALTER TABLE hashtag_uses DISABLE KEYS')
+	db.query('ALTER TABLE mentions DISABLE KEYS')
+	db.query('ALTER TABLE tweets DISABLE KEYS')
+	print "Database keys disabled."
 	
 	cur = db.cursor()
+
+	print "Parsing %s..."%(args.tweetsfile)
+
+	with open(args.tweetsfile, "rt") as infile:
+		start_time = time.time()
+		# grab file size
+		infile.seek(0,os.SEEK_END)
+		filesize = infile.tell()
+		infile.seek(0,os.SEEK_SET)
+		
+		# start our read loop with valid data
+		tweet = ''
+		tweet_start_found = False
+		start = 0
+		last_parse_position = 0
+		for line in infile:
+
+			if line[0] == '{':
+				# start of tweet
+				tweet_start_found = True
+				start = time.time()
+				tweet = ''
+				tweet += line
+			elif line[0:2] == '},' and tweet_start_found == True:
+				# end of tweet
+				tweet += line[0]
+				tweet_start_found = False
+				tweet_read_time += time.time() - start
+				
+				start = time.time()
+				obj = simplejson.loads(tweet)
+				tweet_parse_time += time.time() - start;
+				
+				start = time.time()
+				add_tweet_to_db(cur, obj, tweet)
+				tweet_process_time += time.time() - start
+				#tweets.append(obj)
+			elif tweet_start_found == True:
+				# some line in the middle
+				tweet += line
+
+			cur_pos = infile.tell()
+			if (cur_pos - last_parse_position) > PARSE_SIZE:
+				last_parse_position = cur_pos
+				pct_done = (float(cur_pos) * 100.0 / float(filesize))
+				print "===================="
+				print "%f%% complete..."%(pct_done)
+				print_progress()
+
+		flush_tweet_buffer(cursor)
+		flush_user_buffer(cursor)
+		
+		print_progress()
+
 except Exception, e:
 	print "Error connecting to db: ",e
-	quit()
-
-print "Parsing %s..."%(args.tweetsfile)
-tweets = []
-with open(args.tweetsfile, "rt") as infile:
-	start_time = time.time()
-	# grab file size
-	infile.seek(0,os.SEEK_END)
-	filesize = infile.tell()
-	infile.seek(0,os.SEEK_SET)
-    
-	# start our read loop with valid data
-	tweet = ''
-	tweet_start_found = False
-	start = 0
-	last_parse_position = 0
-	for line in infile:
-
-		if line[0] == '{':
-			# start of tweet
-			tweet_start_found = True
-			start = time.time()
-			tweet = ''
-			tweet += line
-		elif line[0:2] == '},' and tweet_start_found == True:
-			# end of tweet
-			tweet += line[0]
-			tweet_start_found = False
-			tweet_read_time += time.time() - start
-			
-			start = time.time()
-			obj = simplejson.loads(tweet)
-			tweet_parse_time += time.time() - start;
-			
-			start = time.time()
-			add_tweet_to_db(cur, obj, tweet)
-			tweet_process_time += time.time() - start
-			#tweets.append(obj)
-		elif tweet_start_found == True:
-			# some line in the middle
-			tweet += line
-
-		cur_pos = infile.tell()
-		if (cur_pos - last_parse_position) > PARSE_SIZE:
-			last_parse_position = cur_pos
-			pct_done = (float(cur_pos) * 100.0 / float(filesize))
-			print "===================="
-			print "%f%% complete..."%(pct_done)
-			print_progress()
-			
-	print_progress()
-
-db.close()
+finally:
+	print "--- Enabling keys... ---"
+	db.query('ALTER TABLE hashtag_uses ENABLE KEYS')
+	db.query('ALTER TABLE mentions ENABLE KEYS')
+	db.query('ALTER TABLE tweets ENABLE KEYS')
+	print "Done."
+	db.close()
