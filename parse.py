@@ -231,6 +231,7 @@ def add_user_to_db(cursor, user, user_id):
 #
 #
 def get_or_add_hashtag(cursor, hashtag):
+	global hashtags
 	global hashtags_added, hashtags_skipped
 	global hashtag_check_time, hashtag_insert_time
 	
