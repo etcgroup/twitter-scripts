@@ -24,6 +24,8 @@ import HTMLParser
 import time
 import heapq
 import math
+from utils.helpers import *
+from utils.twitter import *
 
 #
 #
@@ -63,7 +65,7 @@ def parse_twitter_date(datestr):
 	
 DBHOST = 'localhost'
 DBUSER = 'root'
-DBPASS = 'blahhalb'
+DBPASS = None
 DBNAME = 'twitter'
 
 parser = argparse.ArgumentParser()
