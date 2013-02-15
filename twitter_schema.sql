@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS `tweets` (
   `text` varchar(255) CHARACTER SET utf8mb4 NOT NULL,
   `followers_count` int(11) NOT NULL,
   `friends_count` int(11) NOT NULL,
+  `sentiment` float(10,9) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   KEY `created_at` (`created_at`),
