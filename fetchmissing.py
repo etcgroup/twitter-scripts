@@ -18,6 +18,7 @@ from MySQLdb import cursors
 import getpass
 import argparse
 import tweepy
+from tweepy.parsers import Parser
 from utils.helpers import *
 from utils.twitter import *
 
@@ -40,6 +41,9 @@ DBNAME = 'twitter'
 SELECT_INSTANCES_COUNT_QUERY = """select distinct count(t.in_reply_to_status_id) from tweets t where t.in_reply_to_status_id is not null and not exists (select * from tweets t2 where t2.id = t.in_reply_to_status_id)"""
 SELECT_INSTANCES_QUERY = """select distinct t.in_reply_to_status_id from tweets t where t.in_reply_to_status_id is not null and not exists (select * from tweets t2 where t2.id = t.in_reply_to_status_id)"""
 
+TWEET_INSERT_STMT = """REPLACE INTO tweets
+			(id,user_id,created_at,in_reply_to_status_id,in_reply_to_user_id, retweet_of_status_id, text, followers_count, friends_count) 
+			VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 
 #
 # helper functions
@@ -72,6 +76,13 @@ if DBPASS is None:
 	DBPASS = getpass.getpass('enter database password: ')
 
 
+#
+# classes
+#
+class RawJsonParser(Parser):
+	def parse(self, method, payload):
+		return payload
+
 
 
 #
@@ -83,7 +94,7 @@ if DBPASS is None:
 print "Doing Auth"
 auth = do_auth_from_file(args.credentialsfile)
 
-api = tweepy.API(auth)
+api = tweepy.API(auth, parser=RawJsonParser())
 
 print "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
 db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=DBPASS, db=args.dbname, charset='utf8', use_unicode=True)
@@ -92,14 +103,17 @@ cursor = db.cursor(cursors.SSCursor)
 cursor.execute(SELECT_INSTANCES_QUERY)
 dbrow = cursor.fetchone() 
 total = cursor.rowcount
-print total
-while dbrow is not None:
-	print "id: %d"%( dbrow[0] )
+#print total
 
+while dbrow is not None:
 	dbrow = cursor.fetchone()
-	tweet = api.get_status(id=dbrow[0])
-	print tweet.__dict__
-	break
+
+	try:
+		tweet = api.get_status(id=dbrow[0])
+	except Exception, e:
+		print "Exception: %s"%(e)
+	print "%s,"%(pretty(simplejson.loads(tweet)))
+
 
 cursor.close()
 db.close()
