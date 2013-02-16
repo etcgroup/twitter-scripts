@@ -18,6 +18,8 @@ from MySQLdb import cursors
 import getpass
 import argparse
 import tweepy
+import time
+from tweepy.error import TweepError
 from tweepy.parsers import Parser
 from utils.helpers import *
 from utils.twitter import *
@@ -91,12 +93,12 @@ class RawJsonParser(Parser):
 #
 #
 
-print "Doing Auth"
+print >> sys.stderr, "Doing Auth"
 auth = do_auth_from_file(args.credentialsfile)
 
 api = tweepy.API(auth, parser=RawJsonParser())
 
-print "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
+print >> sys.stderr, "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
 db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=DBPASS, db=args.dbname, charset='utf8', use_unicode=True)
 cursor = db.cursor(cursors.SSCursor)
 
@@ -110,8 +112,16 @@ while dbrow is not None:
 
 	try:
 		tweet = api.get_status(id=dbrow[0])
+	except TweepError, e:
+		if e.response.status == 400:
+			print >> sys.stderr, "Sleeping"
+			time.sleep(15*60)
+		elif e.response.status != 404 and e.response.status != 403:
+			print "TweetExcept: (%s)(%s)"%(e.reason, e.response.status)
+			quit()
 	except Exception, e:
-		print "Exception: %s"%(e)
+		print "Exception: (%s) %s"%(type(e),e)
+		quit()
 	print "%s,"%(pretty(simplejson.loads(tweet)))
 
 
