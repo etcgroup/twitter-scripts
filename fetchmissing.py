@@ -87,42 +87,59 @@ class RawJsonParser(Parser):
 
 
 
+
+
+
 #
 #
 # main
 #
 #
 
-print >> sys.stderr, "Doing Auth"
-auth = do_auth_from_file(args.credentialsfile)
-
+# grab api
+auth = do_auth_from_file(args.credentialsfile)	
 api = tweepy.API(auth, parser=RawJsonParser())
+print >> sys.stderr, pretty(simplejson.loads(api.rate_limit_status()))
 
 print >> sys.stderr, "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
 db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=DBPASS, db=args.dbname, charset='utf8', use_unicode=True)
-cursor = db.cursor(cursors.SSCursor)
+cursor = db.cursor()
 
 cursor.execute(SELECT_INSTANCES_QUERY)
 dbrow = cursor.fetchone() 
 total = cursor.rowcount
+print >> sys.stderr, "Total Tweets: %d"%total
+
 #print total
 
+status_count = 0
+
 while dbrow is not None:
-	dbrow = cursor.fetchone()
 
 	try:
 		tweet = api.get_status(id=dbrow[0])
 	except TweepError, e:
 		if e.response.status == 400:
+			print >> sys.stderr, pretty(simplejson.loads(api.rate_limit_status()))
 			print >> sys.stderr, "Sleeping"
-			time.sleep(15*60)
+			time.sleep(10*60)
 		elif e.response.status != 404 and e.response.status != 403:
 			print "TweetExcept: (%s)(%s)"%(e.reason, e.response.status)
 			quit()
 	except Exception, e:
 		print "Exception: (%s) %s"%(type(e),e)
 		quit()
+	finally:
+		auth = do_auth_from_file(args.credentialsfile)	
+		api = tweepy.API(auth, parser=RawJsonParser())
 	print "%s,"%(pretty(simplejson.loads(tweet)))
+
+
+	status_count += 1
+	if (status_count % 10) == 0:
+		print >> sys.stderr, "%d of %d"%(status_count, total)
+
+	dbrow = cursor.fetchone()
 
 
 cursor.close()
