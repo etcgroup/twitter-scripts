@@ -16,6 +16,3 @@ def pretty(obj):
 
 
 
-def parse_twitter_date(datestr):
-	return datetime.datetime.strptime(datestr[4:], '%b %d %H:%M:%S +0000 %Y')
-

@@ -8,6 +8,13 @@ import sys
 import tweepy
 from helpers import *
 
+
+#
+# parse a twitter date
+#
+def parse_twitter_date(datestr):
+    return datetime.datetime.strptime(datestr[4:], '%b %d %H:%M:%S +0000 %Y')
+
 #
 # reads credential file
 #
