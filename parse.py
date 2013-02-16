@@ -25,6 +25,7 @@ import time
 import heapq
 import math
 from utils.helpers import *
+import traceback
 
 #
 #
@@ -412,34 +413,35 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 			#
 			# Process the tweet's entities (mentions and hashtags)
 			#
-			entities = tweet['entities']
+			if 'entities' in tweet:
+				entities = tweet['entities']
 
-			if 'hashtags' in entities:
-				tweet_hashtags = entities['hashtags']
-				hashtags_in_tweet = set()
-				for ht in tweet_hashtags:
-					# make sure we haven't processed this already
-					# since hashtags can appear multiple times per tweet
-					htname = ht['text'].lower()
-					if htname not in hashtags_in_tweet:
-						hashtags_in_tweet.add(htname)
-						ht_id = get_or_add_hashtag(cursor,ht)
-						
-						buffer_hashtag_use(cursor, (tweet_id, ht_id))
-						
+				if 'hashtags' in entities:
+					tweet_hashtags = entities['hashtags']
+					hashtags_in_tweet = set()
+					for ht in tweet_hashtags:
+						# make sure we haven't processed this already
+						# since hashtags can appear multiple times per tweet
+						htname = ht['text'].lower()
+						if htname not in hashtags_in_tweet:
+							hashtags_in_tweet.add(htname)
+							ht_id = get_or_add_hashtag(cursor,ht)
+							
+							buffer_hashtag_use(cursor, (tweet_id, ht_id))
+							
 
-			if 'user_mentions' in entities:
-				tweet_mentions = entities['user_mentions']
-				mentions_in_tweet = set()
-				for mention in tweet_mentions:
-					m_user_id = mention['id']
-					if m_user_id not in mentions_in_tweet:
-						mentions_in_tweet.add(m_user_id)
+				if 'user_mentions' in entities:
+					tweet_mentions = entities['user_mentions']
+					mentions_in_tweet = set()
+					for mention in tweet_mentions:
+						m_user_id = mention['id']
+						if m_user_id not in mentions_in_tweet:
+							mentions_in_tweet.add(m_user_id)
 
-						buffer_mention(cursor, (tweet_id, m_user_id))
-						
-						# Don't add partial users
-						# add_user_to_db(cursor, mention, m_user_id)
+							buffer_mention(cursor, (tweet_id, m_user_id))
+							
+							# Don't add partial users
+							# add_user_to_db(cursor, mention, m_user_id)
 
 	return None
 
@@ -548,6 +550,7 @@ try:
 
 except Exception, e:
 	print "Error connecting to db: ",e
+	traceback.print_exc(file=sys.stderr)
 finally:
 	print "--- Enabling keys... ---"
 	db.query('ALTER TABLE hashtag_uses ENABLE KEYS')
