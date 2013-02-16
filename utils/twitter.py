@@ -19,7 +19,7 @@ def read_credential_file(filename):
                 parts = line.split(':')
                 ret[parts[0].strip()] = parts[1].strip()
 
-    print pretty(ret)
+    #print pretty(ret)
     return ret
 
 
