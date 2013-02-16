@@ -25,7 +25,6 @@ import time
 import heapq
 import math
 from utils.helpers import *
-from utils.twitter import *
 
 #
 #
