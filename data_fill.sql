@@ -25,3 +25,10 @@ is_reply = (
     OR in_reply_to_user_id IS NOT NULL 
     OR `text` RLIKE "^@.*"
 );
+
+----
+-- Add indices on the reply_to fields
+----
+ALTER TABLE tweets
+ADD INDEX `in_reply_to_status_id` (`in_reply_to_status_id`),
+ADD INDEX `in_reply_to_user_id` (`in_reply_to_user_id`);
