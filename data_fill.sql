@@ -32,3 +32,10 @@ is_reply = (
 ALTER TABLE tweets
 ADD INDEX `in_reply_to_status_id` (`in_reply_to_status_id`),
 ADD INDEX `in_reply_to_user_id` (`in_reply_to_user_id`);
+
+----
+-- Add indices to the retweet and reply fields
+----
+ALTER TABLE tweets
+ADD INDEX `is_retweet` (`is_retweet`),
+ADD INDEX `is_reply` (`is_reply`);
