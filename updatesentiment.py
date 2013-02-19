@@ -32,6 +32,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--dbhost", help="Database host name", default=DBHOST)
 parser.add_argument("--dbuser", help="Database user name", default=DBUSER)
 parser.add_argument("--dbname", help="Database name", default=DBNAME)
+parser.add_argument("-p", "--dbpass", help="name of the database user", action='store_true')
 parser.add_argument("--appId", help="Sentiment140 app id (email address)", required=True)
 parser.add_argument("--requestSize", help="Number of tweets to request per batch", default=10000)
 parser.add_argument("--all", help="Test all tweets, not just retweets", action='store_true')
@@ -40,8 +41,10 @@ parser.add_argument("--all", help="Test all tweets, not just retweets", action='
 args = parser.parse_args()
 
 # grab db password
-if DBPASS is None:
-    DBPASS = getpass.getpass('enter database password: ')
+if args.dbpass:
+	args.dbpass = getpass.getpass('enter database password: ')
+else:
+	args.dbpass = ''
 
     
 SELECT_INSTANCES_QUERY = """select t.id, t.text from tweets t where t.sentiment is null limit %s"""%(args.requestSize)
@@ -55,7 +58,7 @@ UPDATE_SENTIMENT_QUERY = """update tweets t set t.sentiment = %s where t.id = %s
 #
 
 print "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
-db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=DBPASS, db=args.dbname, charset='utf8', use_unicode=True)
+db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=args.dbpass, db=args.dbname, charset='utf8', use_unicode=True)
 cursor = db.cursor(cursors.SSCursor)
 
 count = 0
