@@ -44,8 +44,8 @@ if DBPASS is None:
     DBPASS = getpass.getpass('enter database password: ')
 
     
-SELECT_INSTANCES_QUERY = """select t.id, t.text from tweets t where t.sentiment is null limit """ + args.requestSize
-SELECT_RETWEETS_QUERY = """select t.id, t.text from tweets t where t.sentiment is null and t.in_reply_to_status_id is not null limit """ + args.requestSize
+SELECT_INSTANCES_QUERY = """select t.id, t.text from tweets t where t.sentiment is null limit %s"""%(args.requestSize)
+SELECT_RETWEETS_QUERY = """select t.id, t.text from tweets t where t.sentiment is null and t.in_reply_to_status_id is not null limit %s"""%(args.requestSize)
 UPDATE_SENTIMENT_QUERY = """update tweets t set t.sentiment = %s where t.id = %s"""
 
 #
