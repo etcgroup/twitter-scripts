@@ -83,8 +83,6 @@ while(1):
     print "Requesting sentiment for", len(tweets["data"]), "tweets"
     r = requests.post(url, data=simplejson.dumps(tweets))
     
-    print r.text
-
     results = simplejson.loads(r.text)
 
     dbvals = []
