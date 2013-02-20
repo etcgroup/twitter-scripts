@@ -83,8 +83,13 @@ while(1):
     print "Requesting sentiment for", len(tweets["data"]), "tweets"
     r = requests.post(url, data=simplejson.dumps(tweets))
     
-    results = simplejson.loads(r.text)
-
+    try:
+        results = simplejson.loads(r.text)
+    except Exception as e:
+        print e
+        print r.text
+        break;
+        
     dbvals = []
 
     polarityCount = {-1:0, 0:0, 1:0}
