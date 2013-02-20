@@ -87,11 +87,15 @@ while(1):
 
     dbvals = []
 
+    polarityCount = {-1:0, 0:0, 1:0}
+    
     for t in results["data"]:
         num = (t["polarity"] - 2) / 2
-        print t["id"], num
+        polarityCount[num] += 1
         dbvals.append([num, t["id"]])
 
+    print polarityCount
+    
     cursor.executemany(UPDATE_SENTIMENT_QUERY, dbvals)
 
     count = count + 1
