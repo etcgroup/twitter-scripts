@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS `tweets` (
   `followers_count` int(11) NOT NULL,
   `friends_count` int(11) NOT NULL,
   `sentiment` float(10,9) DEFAULT NULL,
+  `conversation_id` int(10) unsigned DEFAULT NULL,
+  `depth` int(10) unsigned DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   KEY `created_at` (`created_at`),
@@ -98,3 +100,26 @@ CREATE TABLE IF NOT EXISTS `users` (
   `statuses_count` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `conversations`
+--
+
+CREATE TABLE IF NOT EXISTS `conversations` (
+  `id` int(11) NOT NULL,
+  `breadth` int(11) DEFAULT NULL,
+  `depth` int(11) DEFAULT NULL,
+  `root_tweet` int(11) DEFAULT NULL,
+  `tweet_count` int(11) DEFAULT NULL,
+  `start` datetime DEFAULT NULL,
+  `end` datetime DEFAULT NULL,
+  `users_count` int(11) DEFAULT NULL,
+  `retweet_count` int(11) DEFAULT NULL,
+  `sentiment` float(10,9) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
+
+
