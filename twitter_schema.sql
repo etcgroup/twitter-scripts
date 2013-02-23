@@ -75,11 +75,13 @@ CREATE TABLE IF NOT EXISTS `tweets` (
   `friends_count` int(11) NOT NULL,
   `sentiment` float(10,9) DEFAULT NULL,
   `conversation_id` int(10) unsigned DEFAULT NULL,
-  `depth` int(10) unsigned DEFAULT NULL,
+  `depth` int(11) unsigned DEFAULT NULL,
+  `retweet_count` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   KEY `created_at` (`created_at`),
-  KEY `retweet_of_status_id` (`retweet_of_status_id`)
+  KEY `retweet_of_status_id` (`retweet_of_status_id`),
+  KEY `conversation_id` (`conversation_id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 -- --------------------------------------------------------
