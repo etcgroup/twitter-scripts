@@ -10,17 +10,39 @@ import simplejson
 import argparse
 import random
 import csv
+from utils.helpers import *
 
 
 
 class Conversation:
 	def __init__(self, first):
 		self.replies = []
+		self.tweets = {}
+		self.root = None
 		if first is not None:
-			self.replies.append(first)
+			self.addReply(first[0],first[1])
 			self.id = first[1]
 		else:
 			self.id = random.randrange(0,100000,1)
+
+	def addTweet(self,tweet):
+		if tweet not in self.tweets:
+			self.tweets[tweet] = {'parent': None, 'children': [], 'depth': 0}
+
+	def addReply(self,source,dest):
+		self.replies.append((source,dest))
+		# add tweets
+		self.addTweet(source)
+		self.addTweet(dest)
+
+		# add parent-child relationships
+		self.tweets[source]['parent'] = dest
+		self.tweets[dest]['children'].append(source)
+
+	def extend(self,other):
+		for r in other.replies:
+			self.addReply(r[0],r[1])
+
 
 	def __len__(self):
 		return len(self.replies)
@@ -79,11 +101,11 @@ with open(args.infile, "rt") as infile:
 			else:
 				if hasT0 and not hasT1:
 					conv = tweets[t0]
-					conv.replies.append(reply)
+					conv.addReply(t0,t1)
 					tweets[t1] = conv
 				elif hasT1 and not hasT0:
 					conv = tweets[t1]
-					conv.replies.append(reply)
+					conv.addReply(t0,t1)
 					tweets[t0] = conv
 				else:
 						# must join 2 existing conversations
@@ -92,7 +114,7 @@ with open(args.infile, "rt") as infile:
 					#print "joining (%d,%d)"%(conv1.id,conv2.id)
 					if conv1 != conv2:
 						# add all replies to the first conversation
-						conv1.replies.extend(conv2.replies)
+						conv1.extend(conv2)
 
 						# update dictionaries to all point to conv1
 						tweets[t1] = conv1
@@ -118,14 +140,17 @@ for c in convs:
 	if len(c) > 2:
 		cnt += 1
 		longest = max(longest, len(c))
+	if len(c) == 5:
+		print pretty(c.replies)
+		print pretty(c.tweets)
 
 print "# convs with more than 2 edges = %d"%(cnt)
 print "largest conv has %d edges"%(longest)
 
-with open(args.outfile, "wt") as outfile:
-	file_writer = csv.writer(outfile)
-	for c in convs:
-		if len(c) > 2:
-			for r in c.replies:
-				file_writer.writerow(r)
+#with open(args.outfile, "wt") as outfile:
+#	file_writer = csv.writer(outfile)
+#	for c in convs:
+#		if len(c) > 2:
+#			for r in c.replies:
+#				file_writer.writerow(r)
 
