@@ -19,6 +19,8 @@ class Conversation:
 		self.replies = []
 		self.tweets = {}
 		self.root = None
+		self.depth = 0
+		self.breadth = 0
 		if first is not None:
 			self.addReply(first[0],first[1])
 			self.id = first[1]
@@ -27,7 +29,7 @@ class Conversation:
 
 	def addTweet(self,tweet):
 		if tweet not in self.tweets:
-			self.tweets[tweet] = {'parent': None, 'children': [], 'depth': 0}
+			self.tweets[tweet] = {'id': tweet, 'parent': None, 'children': [], 'depth': 0}
 
 	def addReply(self,source,dest):
 		self.replies.append((source,dest))
@@ -39,9 +41,59 @@ class Conversation:
 		self.tweets[source]['parent'] = dest
 		self.tweets[dest]['children'].append(source)
 
+
 	def extend(self,other):
 		for r in other.replies:
 			self.addReply(r[0],r[1])
+
+
+	def findroot(self):
+		self.root = None
+		for t in self.tweets.values():
+			if t['parent'] is None:
+				if self.root is not None:
+					print "root is already set!"
+				self.root = t
+				#print "Root = ", pretty(t)
+		if self.root is None:
+			print "No root found"
+
+
+	def walkTree(self):
+		""" recurisve tree walk begin function """
+		if self.root is None:
+			print "invalid root"
+			return
+		self.bfswalk([self.root],0)
+
+
+	def bfswalk(self,nodelist,depth):
+		children = []
+		# find all children
+		#print "bfswalk (depth:%d, nodelist:%d)"%(depth, len(nodelist))
+		self.depth = max(depth,self.depth)
+		self.breadth = max(len(nodelist), self.breadth)
+		for n in nodelist:
+			#print pretty(n)
+			nodeChildren = [self.tweets[k] for k in n['children']]
+			n['depth'] = depth
+			#print "  depth %d, %d children"%(depth, len(nodeChildren))
+			#print pretty(nodeChildren)
+			children.extend(nodeChildren)
+		if len(children) > 0:
+			self.bfswalk(children, depth+1)
+
+
+
+	def getChildren(self,id):
+		node = self.tweets[tweet]
+		if node is not None:
+			return node['children']
+
+	def process(self):
+		self.findroot()
+		self.walkTree()
+
 
 
 	def __len__(self):
@@ -60,7 +112,7 @@ class Conversation:
 		return self.id - other.id
 
 	def __str__(self):
-		return "%d (len:%d)"%(self.id,len(self.replies))
+		return "%d (len:%d, root:%d, depth:%d, breadth:%d)"%(self.id,len(self.replies), self.root['id'], self.depth, self.breadth)
 
 #
 #
@@ -136,16 +188,25 @@ with open(args.infile, "rt") as infile:
 print "# convs = %d"%(len(convs))
 cnt = 0
 longest = 0
+widest = 0
+deepest = 0
 for c in convs:
+	c.process()
 	if len(c) > 2:
 		cnt += 1
 		longest = max(longest, len(c))
-	if len(c) == 5:
-		print pretty(c.replies)
-		print pretty(c.tweets)
+	widest = max(widest,c.breadth)
+	deepest = max(deepest,c.depth)
+
+#	if len(c) == 5:
+#		print pretty(c.replies)
+#		print pretty(c.tweets)
+#		print "---[ ",c
 
 print "# convs with more than 2 edges = %d"%(cnt)
 print "largest conv has %d edges"%(longest)
+print "widest: %d"%(widest)
+print "deepest: %d"%(deepest)
 
 #with open(args.outfile, "wt") as outfile:
 #	file_writer = csv.writer(outfile)
