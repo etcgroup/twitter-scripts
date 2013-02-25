@@ -47,13 +47,6 @@ TWEET_INSERT_STMT = """REPLACE INTO tweets
 			(id,user_id,created_at,in_reply_to_status_id,in_reply_to_user_id, retweet_of_status_id, text, followers_count, friends_count) 
 			VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 
-#
-# helper functions
-#
-def pretty(obj):
-	return simplejson.dumps(obj, sort_keys=True, indent=2)
-
-
 
 #
 #
@@ -100,6 +93,9 @@ class RawJsonParser(Parser):
 auth = do_auth_from_file(args.credentialsfile)	
 api = tweepy.API(auth, parser=RawJsonParser())
 print >> sys.stderr, pretty(simplejson.loads(api.rate_limit_status()))
+print >> sys.stderr, "GMtime: ", time.mktime(time.gmtime())
+print >> sys.stderr, "localtime: ", time.mktime(time.localtime())
+
 
 print >> sys.stderr, "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
 db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=DBPASS, db=args.dbname, charset='utf8', use_unicode=True)
@@ -115,24 +111,28 @@ print >> sys.stderr, "Total Tweets: %d"%total
 status_count = 0
 
 while dbrow is not None:
-
+	tweet = None
 	try:
+		print >> sys.stderr, "grabbing %s"%(dbrow[0])
 		tweet = api.get_status(id=dbrow[0])
 	except TweepError, e:
 		if e.response.status == 400:
 			print >> sys.stderr, pretty(simplejson.loads(api.rate_limit_status()))
 			print >> sys.stderr, "Sleeping"
+			print >> sys.stderr, "GMtime: ", time.mktime(time.gmtime())
 			time.sleep(10*60)
 		elif e.response.status != 404 and e.response.status != 403:
 			print "TweetExcept: (%s)(%s)"%(e.reason, e.response.status)
 			quit()
 	except Exception, e:
-		print "Exception: (%s) %s"%(type(e),e)
+		print "Exception: (%s) %s"%(type(e),e)		
 		quit()
-	finally:
-		auth = do_auth_from_file(args.credentialsfile)	
-		api = tweepy.API(auth, parser=RawJsonParser())
-	print "%s,"%(pretty(simplejson.loads(tweet)))
+
+	if tweet is not None:
+		print tweet
+		print >> sys.stderr, "%s,"%(pretty(simplejson.loads(tweet)))
+	else:
+		print >> sys.stderr, "error grabbing tweet %s"%(dbrow[0])
 
 
 	status_count += 1
