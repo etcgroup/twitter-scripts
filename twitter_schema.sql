@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS `users` (
 --
 
 CREATE TABLE IF NOT EXISTS `conversations` (
-  `id` int(11) NOT NULL,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
   `breadth` int(11) DEFAULT NULL,
   `depth` int(11) DEFAULT NULL,
   `root_tweet` int(11) DEFAULT NULL,

@@ -51,7 +51,7 @@ ADD INDEX `is_reply` (`is_reply`);
 --
 
 CREATE TABLE IF NOT EXISTS `conversations` (
-  `id` int(11) NOT NULL,
+  `id` int(11) NOT NULL AUTO_INCREMENT,
   `breadth` int(11) DEFAULT NULL,
   `depth` int(11) DEFAULT NULL,
   `root_tweet` int(11) DEFAULT NULL,
@@ -72,6 +72,7 @@ ALTER TABLE tweets
 ADD  `conversation_id` int(10) unsigned DEFAULT NULL,
 ADD  `depth` int(11) unsigned DEFAULT NULL,
 ADD  `retweet_count` int(11) DEFAULT NULL,
+ADD  `child_count` int(11) DEFAULT NULL,
 ADD KEY `conversation_id` (`conversation_id`);
 
 -- --
