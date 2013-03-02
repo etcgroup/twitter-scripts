@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS `tweets` (
   `conversation_id` int(10) unsigned DEFAULT NULL,
   `depth` int(11) unsigned DEFAULT NULL,
   `retweet_count` int(11) DEFAULT NULL,
+  `child_count` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `user_id` (`user_id`),
   KEY `created_at` (`created_at`),
@@ -110,7 +111,7 @@ CREATE TABLE IF NOT EXISTS `users` (
 --
 
 CREATE TABLE IF NOT EXISTS `conversations` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
   `breadth` int(11) DEFAULT NULL,
   `depth` int(11) DEFAULT NULL,
   `root_tweet` int(11) DEFAULT NULL,
