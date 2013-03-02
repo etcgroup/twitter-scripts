@@ -166,7 +166,6 @@ parser.add_argument("--dbhost", help="Database host name", default=DBHOST)
 parser.add_argument("--dbuser", help="Database user name", default=DBUSER)
 parser.add_argument("--dbname", help="Database name", default=DBNAME)
 parser.add_argument("-p", "--dbpass", help="name of the database user", action='store_true')
-parser.add_argument("--outfile", type=str, help="name of the output edge csv file")
 parser.add_argument("--min_width", type=int, help="minimum width of the tree to dump", default=1)
 parser.add_argument("--min_depth", type=int, help="minimum width of the tree to dump", default=1)
 parser.add_argument("--min_messages", type=int, help="minimum width of the tree to dump", default=2)
@@ -179,7 +178,13 @@ else:
 	args.dbpass = ''
 
 
-
+#
+#
+#
+# main
+#
+#
+#
 tweets = {}
 convs = set()
 
@@ -250,48 +255,24 @@ for c in convs:
 	widest = max(widest,c.breadth)
 	deepest = max(deepest,c.depth)
 
-#	if len(c) == 5:
-#		print pretty(c.replies)
-#		print pretty(c.tweets)
-#		print "---[ ",c
 
 print "# convs with more than 2 edges = %d"%(cnt)
 print "largest conv has %d edges"%(longest)
 print "widest: %d"%(widest)
 print "deepest: %d"%(deepest)
 
-#reduced = [c.__dict__ for c in convs if c.depth >= args.min_depth and c.breadth >= args.min_width and len(c.tweets) >= args.min_messages ]
+reduced = [c.__dict__ for c in convs if c.depth >= args.min_depth and c.breadth >= args.min_width and len(c.tweets) >= args.min_messages ]
 
-#print "reduced size: %d"%(len(reduced))
+print "reduced size: %d"%(len(reduced))
+print "-----------------------"
 
-#print pretty(reduced)
-#print pretty({'root': list(convs)[0]} )
-
-# write JSON output
-#with open(args.outfile, "wt") as outfile:
-#	outfile.write(pretty(reduced))
-
-#with open(args.outfile, "wt") as outfile:
-#	file_writer = csv.writer(outfile)
-#	for c in reduced:
-#		if len(c) > 2:
-#			for r in c['replies']:
-#				file_writer.writerow(r)
-
-
-#with open(args.outfile, "wt") as outfile:
-#	file_writer = csv.writer(outfile)
-#	for c in convs:
-#		if len(c) > 2:
-#			for r in c.replies:
-#				file_writer.writerow(r)
 
 print "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
 db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=args.dbpass, db=args.dbname, charset='utf8', use_unicode=True)
 cursor = db.cursor(cursors.SSCursor)
 
-print "Adding %d conversations"%(len(convs))
-for c in convs:
+print "Adding %d conversations"%(len(reduced))
+for c in reduced:
 	vals = (c.breadth, c.depth, c.root['id'], len(c.tweets))
 	#print vals
 	cursor.execute(INSERT_CONVERSATION, (c.breadth, c.depth, c.root['id'], len(c.tweets)) )
