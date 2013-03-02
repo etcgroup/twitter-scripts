@@ -54,14 +54,15 @@ CREATE TABLE IF NOT EXISTS `conversations` (
   `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
   `breadth` int(11) DEFAULT NULL,
   `depth` int(11) DEFAULT NULL,
-  `root_tweet` int(11) DEFAULT NULL,
+  `root_tweet` bigint(20) DEFAULT NULL,
   `tweet_count` int(11) DEFAULT NULL,
   `start` datetime DEFAULT NULL,
   `end` datetime DEFAULT NULL,
   `users_count` int(11) DEFAULT NULL,
   `retweet_count` int(11) DEFAULT NULL,
   `sentiment` float(10,9) DEFAULT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `root_tweet` (`root_tweet`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 -- --
