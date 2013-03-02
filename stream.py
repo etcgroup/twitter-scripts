@@ -61,7 +61,7 @@ INTERVAL = 2 * 60
 parser = argparse.ArgumentParser()
 parser.add_argument("credentialsfile", type=str, help="name of the credentials file")
 parser.add_argument("--rateinterval", type=int, help="interval in seconds between rate updates",  default=INTERVAL)
-parser.add_argument("--trackfile", help="file to read the tracklist from")
+parser.add_argument("--trackfile", help="file to read the tracklist from", required=True)
 
 
 
@@ -112,15 +112,13 @@ def main():
     # added this loop to power through exceptions and network/connection breaks
     while(1):
 
-        auth1 = do_auth(crednetials)
+        auth1 = do_auth(credentials)
     
         l = StreamListener()
         streamer = tweepy.Stream(auth=auth1, listener=l, secure=True )
-        track_list = [k for k in PRIMARY_TRACK_LIST.split(',')]
-        track_list = [k for k in PRIMARY_TRACK_LIST.split(',')]
-        if args.trackfile is not None:
-            track_list = read_track_list(args.trackfile)
-            print >> sys.stderr, "Tracking:", track_list
+
+        track_list = read_track_list(args.trackfile)
+        print >> sys.stderr, "Tracking:", track_list
 
 
         try:
