@@ -10,8 +10,47 @@ import simplejson
 import argparse
 import random
 import csv
+import MySQLdb
+from MySQLdb import cursors
+import getpass
 from utils.helpers import *
 
+
+#
+#
+# consts
+#
+#
+
+INSERT_CONVERSATION = """insert INTO conversations (breadth, depth, root_tweet, tweet_count) VALUES (%s,%s,%s,%s)"""
+UPDATE_TWEET_QUERY = """update tweets t set t.conversation_id = %s, t.depth = %s, t.child_count = %s where t.id = %s"""
+UPDATE_CONVERSATION_WITH_CALCS = """
+update twitter.conversations c 
+join 
+	(select t.conversation_id as id, min(t.created_at) as start_date, 
+		max(t.created_at) as end_date, 
+		count(distinct t.user_id) as num_users, 
+		sum(t.retweet_count)  as retweet_count,
+		avg(t.sentiment) as sentiment
+	from twitter.tweets t
+	where t.conversation_id is not null
+	group by t.conversation_id) a
+on a.id = c.id
+set c.`start` = a.start_date, c.`end` = a.end_date, c.users_count = a.num_users, c.retweet_count = a.retweet_count, c.sentiment = a.sentiment
+where c.id = a.id
+"""
+
+
+DBHOST = 'localhost'
+DBUSER = 'root'
+DBPASS = None
+DBNAME = 'twitter'
+
+#
+#
+# Classes
+#
+#
 
 
 class Conversation:
@@ -51,8 +90,8 @@ class Conversation:
 		self.root = None
 		for t in self.tweets.values():
 			if t['parent'] is None:
-				if self.root is not None:
-					print "root is already set!"
+				#if self.root is not None:
+				#	print "root is already set!"
 				self.root = t
 				#print "Root = ", pretty(t)
 		if self.root is None:
@@ -123,9 +162,22 @@ class Conversation:
 # add args
 parser = argparse.ArgumentParser()
 parser.add_argument("infile", type=str, help="name of the input edge csv file")
-parser.add_argument("outfile", type=str, help="name of the output edge csv file")
+parser.add_argument("--dbhost", help="Database host name", default=DBHOST)
+parser.add_argument("--dbuser", help="Database user name", default=DBUSER)
+parser.add_argument("--dbname", help="Database name", default=DBNAME)
+parser.add_argument("-p", "--dbpass", help="name of the database user", action='store_true')
+parser.add_argument("--outfile", type=str, help="name of the output edge csv file")
+parser.add_argument("--min_width", type=int, help="minimum width of the tree to dump", default=1)
+parser.add_argument("--min_depth", type=int, help="minimum width of the tree to dump", default=1)
+parser.add_argument("--min_messages", type=int, help="minimum width of the tree to dump", default=2)
 # parse args
 args = parser.parse_args()
+
+if args.dbpass:
+	args.dbpass = getpass.getpass('enter database password: ')
+else:
+	args.dbpass = ''
+
 
 
 tweets = {}
@@ -208,10 +260,59 @@ print "largest conv has %d edges"%(longest)
 print "widest: %d"%(widest)
 print "deepest: %d"%(deepest)
 
+#reduced = [c.__dict__ for c in convs if c.depth >= args.min_depth and c.breadth >= args.min_width and len(c.tweets) >= args.min_messages ]
+
+#print "reduced size: %d"%(len(reduced))
+
+#print pretty(reduced)
+#print pretty({'root': list(convs)[0]} )
+
+# write JSON output
+#with open(args.outfile, "wt") as outfile:
+#	outfile.write(pretty(reduced))
+
+#with open(args.outfile, "wt") as outfile:
+#	file_writer = csv.writer(outfile)
+#	for c in reduced:
+#		if len(c) > 2:
+#			for r in c['replies']:
+#				file_writer.writerow(r)
+
+
 #with open(args.outfile, "wt") as outfile:
 #	file_writer = csv.writer(outfile)
 #	for c in convs:
 #		if len(c) > 2:
 #			for r in c.replies:
 #				file_writer.writerow(r)
+
+print "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
+db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=args.dbpass, db=args.dbname, charset='utf8', use_unicode=True)
+cursor = db.cursor(cursors.SSCursor)
+
+print "Adding %d conversations"%(len(convs))
+for c in convs:
+	vals = (c.breadth, c.depth, c.root['id'], len(c.tweets))
+	#print vals
+	cursor.execute(INSERT_CONVERSATION, (c.breadth, c.depth, c.root['id'], len(c.tweets)) )
+	c.id = cursor.lastrowid
+	for t in c.tweets.values():
+		try:
+			#print pretty(t)
+			vals2 = (c.id, t["depth"], len(t["children"]), t['id'] )
+			#print len(t['children'])
+			#print "   ", vals2
+			cursor.execute(UPDATE_TWEET_QUERY, vals2)
+		except Exception,e:
+			print "error: ", e
+
+print "Running calculations..."
+cursor.execute(UPDATE_CONVERSATION_WITH_CALCS)
+
+cursor.close()
+db.close()
+
+
+
+
 
