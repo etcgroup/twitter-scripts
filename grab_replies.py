@@ -75,7 +75,7 @@ else:
 #
 
 print "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
-db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=DBPASS, db=args.dbname, charset='utf8', use_unicode=True)
+db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=args.dbpass, db=args.dbname, charset='utf8', use_unicode=True)
 cursor = db.cursor()
 
 cursor.execute(SELECT_REPLIES_QUERY)
