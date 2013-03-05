@@ -62,8 +62,10 @@ parser.add_argument("csvfile", type=str, help="name of the csv file to write con
 args = parser.parse_args()
 
 	# grab db password
-if DBPASS is None:
-	DBPASS = getpass.getpass('enter database password: ')
+if args.dbpass:
+	args.dbpass = getpass.getpass('enter database password: ')
+else:
+	args.dbpass = ''
 
 
 #
