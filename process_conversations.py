@@ -177,6 +177,9 @@ if args.dbpass:
 else:
 	args.dbpass = ''
 
+# connect immediately to fail on bad credentials
+print "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
+db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=args.dbpass, db=args.dbname, charset='utf8', use_unicode=True)
 
 #
 #
@@ -276,8 +279,6 @@ reduced = [c for c in convs if \
 print "reduced size: %d"%(len(reduced))
 print "-----------------------"
 
-print "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
-db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=args.dbpass, db=args.dbname, charset='utf8', use_unicode=True)
 cursor = db.cursor(cursors.SSCursor)
 
 print "Adding %d conversations"%(len(reduced))
