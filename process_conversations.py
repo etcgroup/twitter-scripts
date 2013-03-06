@@ -31,12 +31,18 @@ join
 		max(t.created_at) as end_date, 
 		count(distinct t.user_id) as num_users, 
 		sum(t.retweet_count)  as retweet_count,
-		avg(t.sentiment) as sentiment
+		avg(t.sentiment) as sentiment,
+		sum(abs(t.sentiment)) as abs_sentiment
 	from tweets t
 	where t.conversation_id is not null
 	group by t.conversation_id) a
 on a.id = c.id
-set c.`start` = a.start_date, c.`end` = a.end_date, c.users_count = a.num_users, c.retweet_count = a.retweet_count, c.sentiment = a.sentiment
+set c.`start` = a.start_date, 
+	c.`end` = a.end_date, 
+	c.users_count = a.num_users, 
+	c.retweet_count = a.retweet_count, 
+	c.sentiment = a.sentiment,
+	c.abs_sentiment = a.abs_sentiment
 where c.id = a.id
 """
 
