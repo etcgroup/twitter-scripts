@@ -62,8 +62,10 @@ parser.add_argument("csvfile", type=str, help="name of the csv file to write con
 args = parser.parse_args()
 
 	# grab db password
-if DBPASS is None:
-	DBPASS = getpass.getpass('enter database password: ')
+if args.dbpass:
+	args.dbpass = getpass.getpass('enter database password: ')
+else:
+	args.dbpass = ''
 
 
 #
@@ -73,7 +75,7 @@ if DBPASS is None:
 #
 
 print "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
-db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=DBPASS, db=args.dbname, charset='utf8', use_unicode=True)
+db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=args.dbpass, db=args.dbname, charset='utf8', use_unicode=True)
 cursor = db.cursor()
 
 cursor.execute(SELECT_REPLIES_QUERY)

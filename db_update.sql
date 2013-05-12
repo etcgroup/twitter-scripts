@@ -92,3 +92,6 @@ JOIN (
 ) AS counts
 SET t.retweet_count = counts.retweet_count
 WHERE t.id = counts.id
+
+ALTER TABLE conversations
+ADD `abs_sentiment` float(10,9) DEFAULT NULL;

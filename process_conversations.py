@@ -25,18 +25,24 @@ from utils.helpers import *
 INSERT_CONVERSATION = """insert INTO conversations (breadth, depth, root_tweet, tweet_count) VALUES (%s,%s,%s,%s)"""
 UPDATE_TWEET_QUERY = """update tweets t set t.conversation_id = %s, t.depth = %s, t.child_count = %s where t.id = %s"""
 UPDATE_CONVERSATION_WITH_CALCS = """
-update twitter.conversations c 
+update conversations c 
 join 
 	(select t.conversation_id as id, min(t.created_at) as start_date, 
 		max(t.created_at) as end_date, 
 		count(distinct t.user_id) as num_users, 
 		sum(t.retweet_count)  as retweet_count,
-		avg(t.sentiment) as sentiment
-	from twitter.tweets t
+		avg(t.sentiment) as sentiment,
+		sum(abs(t.sentiment)) as abs_sentiment
+	from tweets t
 	where t.conversation_id is not null
 	group by t.conversation_id) a
 on a.id = c.id
-set c.`start` = a.start_date, c.`end` = a.end_date, c.users_count = a.num_users, c.retweet_count = a.retweet_count, c.sentiment = a.sentiment
+set c.`start` = a.start_date, 
+	c.`end` = a.end_date, 
+	c.users_count = a.num_users, 
+	c.retweet_count = a.retweet_count, 
+	c.sentiment = a.sentiment,
+	c.abs_sentiment = a.abs_sentiment
 where c.id = a.id
 """
 
@@ -164,7 +170,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("infile", type=str, help="name of the input edge csv file")
 parser.add_argument("--dbhost", help="Database host name", default=DBHOST)
 parser.add_argument("--dbuser", help="Database user name", default=DBUSER)
-parser.add_argument("--dbname", help="Database name", default=DBNAME)
+parser.add_argument("--dbname", help="Database name", required=True)
 parser.add_argument("-p", "--dbpass", help="name of the database user", action='store_true')
 parser.add_argument("--min_width", type=int, help="minimum width of the tree to dump", default=1)
 parser.add_argument("--min_depth", type=int, help="minimum width of the tree to dump", default=1)
@@ -177,6 +183,9 @@ if args.dbpass:
 else:
 	args.dbpass = ''
 
+# connect immediately to fail on bad credentials
+print "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
+db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=args.dbpass, db=args.dbname, charset='utf8', use_unicode=True)
 
 #
 #
@@ -191,54 +200,60 @@ convs = set()
 cnt = 0
 with open(args.infile, "rt") as infile:
 	for line in infile:
-		if "," in line:
-			parts = line.split(',')
-			t0 = int(parts[0])
-			t1 = int(parts[1])
+		if "," not in line:
+			continue
+			
+		parts = line.split(',')
+		t0 = int(parts[0])
+		t1 = int(parts[1])
 
-			reply = (t0,t1)
+		reply = (t0,t1)
 
-			hasT0 = (t0 in tweets)
-			hasT1 = (t1 in tweets)
-			if not hasT0 and not hasT1:
-				# create a new conversation
-				conv = Conversation(reply)
-				convs.add(conv)
-				tweets[t0] = conv
-				tweets[t1] = conv
-				cnt += 1
-			else:
-				if hasT0 and not hasT1:
-					conv = tweets[t0]
-					conv.addReply(t0,t1)
-					tweets[t1] = conv
-				elif hasT1 and not hasT0:
-					conv = tweets[t1]
-					conv.addReply(t0,t1)
-					tweets[t0] = conv
-				else:
-						# must join 2 existing conversations
-					conv1 = tweets[t0]
-					conv2 = tweets[t1]
-					#print "joining (%d,%d)"%(conv1.id,conv2.id)
-					if conv1 != conv2:
-						# add all replies to the first conversation
-						conv1.extend(conv2)
+		hasT0 = (t0 in tweets)
+		hasT1 = (t1 in tweets)
+		if not hasT0 and not hasT1:
+			# create a new conversation
+			conv = Conversation(reply)
+			convs.add(conv)
+			tweets[t0] = conv
+			tweets[t1] = conv
+			cnt += 1
+		elif hasT0 and not hasT1:
+			conv = tweets[t0]
+			conv.addReply(t0,t1)
+			tweets[t1] = conv
+		elif hasT1 and not hasT0:
+			conv = tweets[t1]
+			conv.addReply(t0,t1)
+			tweets[t0] = conv
+		else:
+			# must join 2 existing conversations
+			conv1 = tweets[t0]
+			conv2 = tweets[t1]
+			#print "joining (%d,%d)"%(conv1.id,conv2.id)
+			
+			# skip conversations already joined - can this happen?
+			if conv1 == conv2:
+				print "conversations already joined!"
+				continue
+			
+			# add all replies to the first conversation
+			conv1.extend(conv2)
 
-						# update dictionaries to all point to conv1
-						tweets[t1] = conv1
-						tweets[t0] = conv1
-						# point all replies from the 2nd conv to conv1
-						for subtweet in conv2.replies:
-							tweets[subtweet[0]] = conv1
-							tweets[subtweet[1]] = conv1
+			# update dictionaries to all point to conv1
+			tweets[t1] = conv1
+			tweets[t0] = conv1
+			# point all replies from the 2nd conv to conv1
+			for subtweet in conv2.replies:
+				tweets[subtweet[0]] = conv1
+				tweets[subtweet[1]] = conv1
 
-						if conv1 not in convs:
-							print "conv1 not in convs (%d,%d)"%(conv1.id,conv2.id)
-						if conv2 not in convs:
-							print "conv2 not in convs (%d,%d)"%(conv1.id,conv2.id)
-							print "total convs: %d/%d"%(len(convs),cnt)
-						convs.remove(conv2)
+			if conv1 not in convs:
+				print "conv1 not in convs (%d,%d)"%(conv1.id,conv2.id)
+			if conv2 not in convs:
+				print "conv2 not in convs (%d,%d)"%(conv1.id,conv2.id)
+				print "total convs: %d/%d"%(len(convs),cnt)
+			convs.remove(conv2)
 
 
 
@@ -261,14 +276,15 @@ print "largest conv has %d edges"%(longest)
 print "widest: %d"%(widest)
 print "deepest: %d"%(deepest)
 
-reduced = [c.__dict__ for c in convs if c.depth >= args.min_depth and c.breadth >= args.min_width and len(c.tweets) >= args.min_messages ]
+reduced = [c for c in convs if \
+	c.depth >= args.min_depth and \
+	c.breadth >= args.min_width and \
+	len(c.tweets) >= args.min_messages \
+]
 
 print "reduced size: %d"%(len(reduced))
 print "-----------------------"
 
-
-print "Connecting to db... (%s@%s %s)"%(args.dbuser,args.dbhost, args.dbname)
-db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=args.dbpass, db=args.dbname, charset='utf8', use_unicode=True)
 cursor = db.cursor(cursors.SSCursor)
 
 print "Adding %d conversations"%(len(reduced))
