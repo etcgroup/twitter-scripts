@@ -126,4 +126,32 @@ CREATE TABLE IF NOT EXISTS `conversations` (
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
 
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `burst_keywords`
+--
+
+CREATE TABLE IF NOT EXISTS `burst_keywords` (
+`id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+`mid_point` DATETIME NOT NULL,
+`window_size` INT(11) NOT NULL,
+`before_total_words` INT(11) NOT NULL,
+`after_total_words` INT(11) NOT NULL,
+`term` VARCHAR(32) NOT NULL,
+`before_count` INT(11) NOT NULL,
+`after_count` INT(11) NOT NULL,
+`count_delta` INT(11) NOT NULL,
+`count_percent_delta` FLOAT NOT NULL,
+`before_rate` FLOAT NOT NULL,
+`after_rate` FLOAT NOT NULL,
+`rate_delta` FLOAT NOT NULL,
+`rate_percent_delta` FLOAT NOT NULL,
+`before_relevance` FLOAT NOT NULL,
+`after_relevance` FLOAT NOT NULL,
+`relevance_delta` FLOAT NOT NULL,
+`relevance_percent_delta` FLOAT NOT NULL,
+ PRIMARY KEY (`id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+
 
