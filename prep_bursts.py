@@ -1,3 +1,11 @@
+#
+# prep_bursts
+#
+# by mjbrooks
+#
+# modified 5-12-2013 by soco for database additions
+#
+
 import os
 import sys
 import simplejson, csv
@@ -5,9 +13,23 @@ from datetime import datetime
 import calendar
 import argparse
 import re
+import MySQLdb
+from MySQLdb import cursors
+import getpass
 
 
 DATETIME_FORMAT = "%Y%m%d %H:%M:%S +0000"
+INSERT_BURSTS = """insert INTO burst_keywords 
+(mid_point, window_size, before_total_words, after_total_words, term, before_count, after_count, count_delta, 
+    count_percent_delta, before_rate, after_rate, rate_delta, rate_percent_delta, before_relevance, after_relevance, 
+    relevance_delta, relevance_percent_delta) 
+VALUES (FROM_UNIXTIME(%s), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+
+DBHOST = None
+DBUSER = 'root'
+DBPASS = ''
+DBNAME = 'twitter'
+DBPORT = 3306
 
 termRX = r"(?P<term>[@#\w ]+)"
 durationRX = r"(?P<duration>\d+)"
@@ -20,6 +42,7 @@ lineRX = termRX + "\t" + r"\{" + durationRX + "," + binOneRX + binTwoRX + "," + 
 # print lineRX
 # exit()
 lineParse = re.compile(lineRX)
+dbRowsToInsert = []
 
 class Burst(object):
     
@@ -103,6 +126,7 @@ class Burst(object):
             self.relevanceDelta,
             self.relevancePercentDelta
         ])
+
         
 def read_bursts(file, numLines):
     printout("Processing %s" %(file.name))
@@ -131,6 +155,42 @@ def read_bursts(file, numLines):
         bursts.append(burst)
     
     return bursts
+
+
+
+def buffer_burst(burst):
+    global dbRowsToInsert
+
+    row = (burst._formatTime(burst.midPoint),
+        burst.windowSize,
+        burst.beforeTotalWords,
+        burst.afterTotalWords,
+        burst.term,
+        burst.beforeCount, 
+        burst.afterCount, 
+        burst.countDelta,
+        burst.countPercentDelta, 
+        burst.beforeArrivalRate, 
+        burst.afterArrivalRate, 
+        burst.arrivalRateDelta,
+        burst.ratePercentDelta,
+        burst.beforeRelevance,
+        burst.afterRelevance,
+        burst.relevanceDelta,
+        burst.relevancePercentDelta)
+    dbRowsToInsert.append(row)
+
+def dbflush(db, cursor):
+    global dbRowsToInsert
+
+    try:
+        cursor.executemany(INSERT_BURSTS, dbRowsToInsert)
+    except Exception, e:
+        print "Error inserting bursts: ", e
+
+    dbRowsToInsert = []
+
+
        
 def printout(message):
     print >> sys.stderr, message
@@ -139,10 +199,22 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
     parser.add_argument("dir", type=str, help="directory containing burst window files")
-    parser.add_argument("out", type=str, help="output csv file")
+    parser.add_argument("--out", type=str, help="output csv file")
     parser.add_argument('-N', help="top N terms from each file will be collected", default=10)
+    parser.add_argument("--dbhost", help="Database host name")
+    parser.add_argument("--dbuser", help="Database user name", default=DBUSER)
+    parser.add_argument("--dbname", help="Database name", default=DBNAME)
+    parser.add_argument("--dbport", type=int, help="Database port number", default=DBPORT)
+    parser.add_argument("-p", "--dbpass", help="name of the database user", action='store_true')    
     args = parser.parse_args()
     
+    # grab db password
+    if args.dbpass:
+        args.dbpass = getpass.getpass('enter database password: ')
+    else:
+        args.dbpass = ''
+
+    # build our list of files to process
     printout('Searching for files in %s...' %(args.dir))
     files = list()
     for file in os.listdir(args.dir):
@@ -151,14 +223,37 @@ if __name__ == '__main__':
             files.append(path)
             
     printout('Found %s files.' %(len(files)))
-        
-    with open(args.out, 'wb') as outfile:
-        writer = csv.writer(outfile)
-        Burst.csvHeader(writer)
     
-        for file in files:
-            with open(file, "rU") as infile:
-                bursts = read_bursts(infile, args.N)
-                for burst in bursts:
+    # write the CSV header
+    writer = None 
+    if args.out is not None:
+        with open(args.out, 'wb') as outfile:
+            writer = csv.writer(outfile)
+            Burst.csvHeader(writer)
+
+
+    # start db connection
+    db = None
+    cursor = None
+    if args.dbhost is not None:
+        print "Connecting to db... (%s@%s:%d %s)"%(args.dbuser,args.dbhost,args.dbport, args.dbname)
+        db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=args.dbpass, db=args.dbname, port=args.dbport, charset='utf8', use_unicode=True)
+        cursor = db.cursor(cursors.SSCursor)
+
+    
+    for file in files:
+        with open(file, "rU") as infile:
+            bursts = read_bursts(infile, args.N)
+            for burst in bursts:
+                # write CSV if necessary
+                if args.out is not None:
                     burst.csv(writer)
+
+                # insert into DB if necessary
+                if args.dbhost is not None:
+                    buffer_burst(burst)
+
+            dbflush(db,cursor)
+
+
                     
