@@ -194,7 +194,7 @@ def flush_user_buffer(cursor):
 	global user_buffer, users_added, user_insert_time
 	
 	if len(user_buffer) > 0:
-	
+
 		try:
 			start = time.time()
 			cursor.executemany(USER_INSERT_STMT, user_buffer.values())
