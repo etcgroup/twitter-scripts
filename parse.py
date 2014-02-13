@@ -40,8 +40,8 @@ USER_INSERT_STMT = """REPLACE INTO users
 USER_SELECT_STMT = """SELECT id from users where id = (%s)"""
 
 TWEET_INSERT_STMT = """REPLACE INTO tweets
-			(id,user_id,created_at,in_reply_to_status_id,in_reply_to_user_id, retweet_of_status_id, text, followers_count, friends_count) 
-			VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+			(id, created_at, text, lat, lon, user_id, user_screen_name, user_name, user_location, user_tz, user_utc_offset, user_geo_enabled, retweet_of_status_id)
+			VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
 TWEET_SELECT_STMT = """SELECT id FROM tweets WHERE id = (%s)"""
 
 HASHTAG_INSERT_STMT = """INSERT INTO hashtags (string) VALUES (%s)"""
@@ -73,6 +73,7 @@ parser.add_argument("--dbhost", type=str, help="name of the database server", de
 parser.add_argument("-u", "--dbuser", type=str, help="name of the database user", default='root')
 parser.add_argument("-p", "--dbpass", help="name of the database user", action='store_true')
 parser.add_argument("--dbname", type=str, help="name of the database schema", required=True)
+parser.add_argument("--limit", type=int, help="maximum number of tweets to process", default=None)
 parser.add_argument("tweetsfile", type=str, help="name of the file containing tweets")
 
 #
@@ -270,7 +271,7 @@ def get_or_add_hashtag(cursor, hashtag):
 # Return true if the tweet is in the db (or will be)
 def tweet_in_db(cursor, tweet_id):
 	global tweet_check_time
-	
+
 	# first check in buffer
 	if tweet_id in tweet_buffer:
 		return True
@@ -281,10 +282,10 @@ def tweet_in_db(cursor, tweet_id):
 	
 	# then check in db
 	start = time.time()
-	cursor.execute(TWEET_SELECT_STMT, tweet_id)
+	cursor.execute(TWEET_SELECT_STMT, [tweet_id])
 	row = cursor.fetchone()
 	tweet_check_time += time.time() - start
-
+	
 	if row is not None:
 		add_to_cache('tweet', tweet_id)
 		return True
@@ -380,65 +381,85 @@ def add_tweet_to_db(cursor, tweet, raw_tweet):
 		if tweet_in_db(cursor, tweet_id):
 			tweets_skipped += 1
 		else:
-			if raw_tweet is None:
-				raw_tweet = simplejson.dumps(tweet)
+			#if raw_tweet is None:
+			#	raw_tweet = simplejson.dumps(tweet)
 			
-			created_at = parse_twitter_date(tweet['created_at'])
-			user = tweet['user']
-			user_id = user['id']
+			tweet_created_at = parse_twitter_date(tweet['created_at'])
+			tweet_text = hp.unescape(tweet['text'])
 
 			retweet_id = tweet['retweeted_status']['id'] if 'retweeted_status' in tweet else None
 			if retweet_id is not None:
 				add_tweet_to_db(cursor, tweet['retweeted_status'], None)
 
+			user = tweet['user']
+			user_id = user['id']
+			user_screen_name = user['screen_name']
+			user_name = user['name']
+			user_location = user['location']
+			user_time_zone = user['time_zone']
+			user_utc_offset = user['utc_offset']
+			user_geo_enabled = user['geo_enabled']
+			
+			coordinates = tweet['coordinates']
+			tweet_lat = None
+			tweet_lon = None
+			if coordinates:
+				tweet_lon = coordinates['coordinates'][0]
+				tweet_lat = coordinates['coordinates'][1]
+
 			tweet_params = (
 				tweet_id,
+				tweet_created_at,
+				tweet_text,
+				tweet_lat,
+				tweet_lon,
 				user_id,
-				created_at,
-				tweet['in_reply_to_status_id'],
-				tweet['in_reply_to_user_id'],
+				user_screen_name,
+				user_name,
+				user_location,
+				user_time_zone,
+				user_utc_offset,
+				user_geo_enabled,
 				retweet_id,
-				hp.unescape(tweet['text']),
-				user['followers_count'],
-				user['friends_count']
-				#raw_tweet
 				)
 				
 			# Insert the tweet
 			buffer_tweet(cursor, tweet_id, tweet_params)
-			
+
+			# And that's it for now
+
 			# Insert the user for the tweet
-			add_user_to_db(cursor, user, user_id)
+			# add_user_to_db(cursor, user, user_id)
 
 			#
 			# Process the tweet's entities (mentions and hashtags)
 			#
-			if 'entities' in tweet:
-				entities = tweet['entities']
-
-				if 'hashtags' in entities:
-					tweet_hashtags = entities['hashtags']
-					hashtags_in_tweet = set()
-					for ht in tweet_hashtags:
+			# if 'entities' in tweet:
+			#	entities = tweet['entities']
+			#
+			#	if 'hashtags' in entities:
+			#		tweet_hashtags = entities['hashtags']
+			#		hashtags_in_tweet = set()
+			#		for ht in tweet_hashtags:
 						# make sure we haven't processed this already
 						# since hashtags can appear multiple times per tweet
-						htname = ht['text'].lower()
-						if htname not in hashtags_in_tweet:
-							hashtags_in_tweet.add(htname)
-							ht_id = get_or_add_hashtag(cursor,ht)
+			#			htname = ht['text'].lower()
+			#			if htname not in hashtags_in_tweet:
+			#				hashtags_in_tweet.add(htname)
+			#				ht_id = get_or_add_hashtag(cursor,ht)
 							
-							buffer_hashtag_use(cursor, (tweet_id, ht_id))
+			#				buffer_hashtag_use(cursor, (tweet_id, ht_id))
 							
 
-				if 'user_mentions' in entities:
-					tweet_mentions = entities['user_mentions']
-					mentions_in_tweet = set()
-					for mention in tweet_mentions:
-						m_user_id = mention['id']
-						if m_user_id not in mentions_in_tweet:
-							mentions_in_tweet.add(m_user_id)
+			#	if 'user_mentions' in entities:
+			#		tweet_mentions = entities['user_mentions']
+			#		mentions_in_tweet = set()
+			#		for mention in tweet_mentions:
+			#			m_user_id = mention['id']
+			#			if m_user_id not in mentions_in_tweet:
+			#				mentions_in_tweet.add(m_user_id)
 
-							buffer_mention(cursor, (tweet_id, m_user_id))
+			#				buffer_mention(cursor, (tweet_id, m_user_id))
 							
 							# Don't add partial users
 							# add_user_to_db(cursor, mention, m_user_id)
@@ -455,12 +476,12 @@ def print_progress():
 	print "   skipped:", tweets_skipped, "tweets,", users_skipped, "users,"
 	print "           ", hashtags_skipped, "hashtags"
 	
-	print "--- Timing {:0.3f}s (total) ---".format(time.time() - start_time)
-	print "  Totals: {:0.3f}s (read) {:0.3f}s (parse) {:0.3f}s (process)".format(tweet_read_time, tweet_parse_time, tweet_process_time)
-	print "  Tweets: {:0.3f}s (check) {:0.3f}s (insert)".format(tweet_check_time, tweet_insert_time)
-	print "   Users: {:0.3f}s (check) {:0.3f}s (insert)".format(user_check_time, user_insert_time)
-	print "Hashtags: {:0.3f}s (check) {:0.3f}s (insert)".format(hashtag_check_time, hashtag_insert_time)
-	print "Entities: {:0.3f}s (mentions) {:0.3f}s (hashtags)".format(mention_insert_time, hashtag_use_insert_time)
+	print "--- Timing {0:0.3f}s (total) ---".format(time.time() - start_time)
+	print "  Totals: {0:0.3f}s (read) {1:0.3f}s (parse) {2:0.3f}s (process)".format(tweet_read_time, tweet_parse_time, tweet_process_time)
+	print "  Tweets: {0:0.3f}s (check) {1:0.3f}s (insert)".format(tweet_check_time, tweet_insert_time)
+	print "   Users: {0:0.3f}s (check) {1:0.3f}s (insert)".format(user_check_time, user_insert_time)
+	print "Hashtags: {0:0.3f}s (check) {1:0.3f}s (insert)".format(hashtag_check_time, hashtag_insert_time)
+	print "Entities: {0:0.3f}s (mentions) {1:0.3f}s (hashtags)".format(mention_insert_time, hashtag_use_insert_time)
 
 	
 # ================================================================
@@ -485,15 +506,14 @@ try:
 	
 	# Trick MySQLdb into using 4-byte UTF-8 strings
 	db.query('SET NAMES "utf8mb4"')
-
-	db.query('ALTER TABLE hashtag_uses DISABLE KEYS')
-	db.query('ALTER TABLE mentions DISABLE KEYS')
 	db.query('ALTER TABLE tweets DISABLE KEYS')
 	print "Database keys disabled."
 	
 	cur = db.cursor()
 
 	print "Parsing %s..."%(args.tweetsfile)
+	if args.limit:
+		print "up to %d tweets..." % args.limit
 
 	with open(args.tweetsfile, "rt") as infile:
 		start_time = time.time()
@@ -540,6 +560,9 @@ try:
 				print "===================="
 				print "%f%% complete..."%(pct_done)
 				print_progress()
+				
+			if args.limit and args.limit < tweets_added:
+				break
 
 		flush_tweet_buffer(cur)
 		flush_user_buffer(cur)
@@ -553,8 +576,6 @@ except Exception, e:
 	traceback.print_exc(file=sys.stderr)
 finally:
 	print "--- Enabling keys... ---"
-	db.query('ALTER TABLE hashtag_uses ENABLE KEYS')
-	db.query('ALTER TABLE mentions ENABLE KEYS')
 	db.query('ALTER TABLE tweets ENABLE KEYS')
 	print "Done."
 	db.close()
