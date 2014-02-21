@@ -34,10 +34,12 @@ from utils.twitter import *
 # reads single lines out f 
 #
 def read_track_list(filename):
+    import codecs
     taglist = []
-    with open(filename,"rt") as infile:
+    with codecs.open(filename,"rt", encoding='utf8') as infile:
         for tag in infile:
-            taglist.extend(tag.strip().split(','))
+            if len(tag.strip()) > 0:
+                taglist.extend(tag.strip().split(','))
     return taglist
 
 
@@ -120,11 +122,10 @@ def main():
         track_list = read_track_list(args.trackfile)
         print >> sys.stderr, "Tracking:", track_list
 
-
         try:
             streamer.filter(track = track_list)
         except Exception, e:
-            #print "Sleeping!"
+           #print "Sleeping!"
             print >> sys.stderr, e
             time.sleep(10)
     
