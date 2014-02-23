@@ -1,9 +1,23 @@
 #! /usr/bin/env python
 """
 A processing script that imports parsed tweets
-into a MySQL table with the following schema:
+into a MySQL table (schema shown below).
+If the table does not exist, it will be created automatically.
+"""
 
-CREATE TABLE IF NOT EXISTS `tweets` (
+import MySQLdb
+import HTMLParser
+import sys
+import traceback
+import math
+import getpass
+import time
+
+from tweet_processor import TweetProcessor
+from ..utils.twitter import parse_twitter_date
+
+CREATE_TABLE_TEMPLATE = """
+CREATE TABLE IF NOT EXISTS `%s` (
   `id` bigint(20) unsigned NOT NULL,
   `created_at` datetime NOT NULL,
   `text` varchar(255) CHARACTER SET utf8mb4 NOT NULL,
@@ -24,22 +38,12 @@ CREATE TABLE IF NOT EXISTS `tweets` (
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 """
 
-import MySQLdb
-import HTMLParser
-import sys
-import traceback
-import math
-import getpass
-import time
-
-from tweet_processor import TweetProcessor
-from ..utils.twitter import parse_twitter_date
-
 # Default database settings
 DBHOST = 'localhost'
 DBUSER = 'root'
 DBPASS = None
 DBNAME = 'twitter'
+DBTABLE = 'tweets'
 
 BUFFER_SIZE = 1000
 MAX_CACHE_SIZE = 50000
@@ -66,12 +70,12 @@ class SimpleDBImport(TweetProcessor):
 
 
     def arguments(self, parser):
-        parser.add_argument("--dbhost", type=str, help="name of the database server", default='localhost')
-        parser.add_argument("-u", "--dbuser", type=str, help="name of the database user", default='root')
+        parser.add_argument("--dbhost", type=str, help="name of the database server", default=DBHOST)
+        parser.add_argument("-u", "--dbuser", type=str, help="name of the database user", default=DBUSER)
         parser.add_argument("-p", "--dbpass", help="name of the database user", action='store_true')
         parser.add_argument("--dbname", type=str, help="name of the database schema", required=True)
-        parser.add_argument("--dbtable", type=str, help="name of the table to insert into", default='tweets')
-        parser.add_argument("--nochecks", action='store_true', help="don't check for duplicat tweets. try to insert everything", default=False)
+        parser.add_argument("--dbtable", type=str, help="name of the table to insert into", default=DBTABLE)
+        parser.add_argument("--nochecks", action='store_true', help="don't check for duplicate tweets. try to insert everything", default=False)
 
     def setup_queries(self):
         self.TWEET_INSERT_STMT = 'REPLACE INTO ' + self.args.dbtable + \
@@ -82,7 +86,7 @@ class SimpleDBImport(TweetProcessor):
 
         self.DISABLE_KEYS_STMT = 'ALTER TABLE ' + self.args.dbtable + ' DISABLE KEYS'
         self.ENABLE_KEYS_STMT = 'ALTER TABLE ' + self.args.dbtable + ' ENABLE KEYS'
-
+        self.CREATE_TABLE_STMT = CREATE_TABLE_TEMPLATE % self.args.dbtable
 
     def setup(self):
         self.setup_queries()
@@ -107,6 +111,12 @@ class SimpleDBImport(TweetProcessor):
             
         # Trick MySQLdb into using 4-byte UTF-8 strings
         self.db.query('SET NAMES "utf8mb4"')
+
+        # Create the table if it doesn't exist
+        self.db.query(self.CREATE_TABLE_STMT)
+
+
+        # Disable keys for fast inserts
         self.db.query(self.DISABLE_KEYS_STMT)
         print "Database keys disabled."
 
