@@ -23,8 +23,6 @@ import argparse
 import os
 import json
 
-from utils.helpers import *
-
 # the chunk size for reading in the file
 PARSE_SIZE = 8 * 1024 * 1024
 
@@ -99,60 +97,61 @@ class TweetProcessor(object):
         if self.args.limit:
             print "up to %d tweets..." % self.args.limit
 
-        with open(self.args.tweetsfile, "rt") as infile:
-            self.start_time = time.time()
-        
-            # grab file size
-            infile.seek(0,os.SEEK_END)
-            filesize = infile.tell()
-            infile.seek(0,os.SEEK_SET)
+        try:
+            with open(self.args.tweetsfile, "rt") as infile:
+                self.start_time = time.time()
+            
+                # grab file size
+                infile.seek(0,os.SEEK_END)
+                filesize = infile.tell()
+                infile.seek(0,os.SEEK_SET)
 
-            # start our read loop with valid data
-            raw = ''
-            tweet_start_found = False
-            start = 0
-            tweet_count = 0
-            last_parse_position = 0
-            for line in infile:
+                # start our read loop with valid data
+                raw = ''
+                tweet_start_found = False
+                start = 0
+                tweet_count = 0
+                last_parse_position = 0
+                for line in infile:
 
-                if line[0] == '{':
-                    # start of tweet
-                    tweet_start_found = True
-                    start = time.time()
-                    raw = ''
-                    raw += line
-                elif line[0:2] == '},' and tweet_start_found == True:
-                    # end of tweet
-                    raw += line[0]
-                    tweet_start_found = False
-                    self.tweet_read_time += time.time() - start
+                    if line[0] == '{':
+                        # start of tweet
+                        tweet_start_found = True
+                        start = time.time()
+                        raw = ''
+                        raw += line
+                    elif line[0:2] == '},' and tweet_start_found == True:
+                        # end of tweet
+                        raw += line[0]
+                        tweet_start_found = False
+                        self.tweet_read_time += time.time() - start
 
-                    start = time.time()
-                    tweet = json.loads(raw)
-                    self.tweet_parse_time += time.time() - start;
+                        start = time.time()
+                        tweet = json.loads(raw)
+                        self.tweet_parse_time += time.time() - start;
 
-		    # make sure it is a tweet
-		    if 'user' in tweet:
-			    start = time.time()
-			    self.process(tweet, raw)
-			    self.tweet_process_time += time.time() - start
-			    tweet_count += 1
+                        # make sure it is a tweet
+                        if 'user' in tweet:
+                            start = time.time()
+                            self.process(tweet, raw)
+                            self.tweet_process_time += time.time() - start
+                            tweet_count += 1
 
-                elif tweet_start_found == True:
-                    # some line in the middle
-                    raw += line
+                    elif tweet_start_found == True:
+                        # some line in the middle
+                        raw += line
 
-                cur_pos = infile.tell()
-                if (cur_pos - last_parse_position) > PARSE_SIZE:
-                    last_parse_position = cur_pos
-                    pct_done = (float(cur_pos) * 100.0 / float(filesize))
-                    print "===================="
-                    print "%f%% complete..."%(pct_done)
-                    self._print_progress()
+                    cur_pos = infile.tell()
+                    if (cur_pos - last_parse_position) > PARSE_SIZE:
+                        last_parse_position = cur_pos
+                        pct_done = (float(cur_pos) * 100.0 / float(filesize))
+                        print "===================="
+                        print "%f%% complete..."%(pct_done)
+                        self._print_progress()
 
-                if self.args.limit and self.args.limit < tweet_count:
-                    break
-    
+                    if self.args.limit and self.args.limit < tweet_count:
+                        break
+        finally:
             self.teardown()
             self._print_progress()
             
@@ -161,5 +160,5 @@ class TweetProcessor(object):
 
 
 if __name__ == '__main__':
-	processor = TweetProcessor()
-	processor.run()
+    processor = TweetProcessor()
+    processor.run()
