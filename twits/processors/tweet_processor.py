@@ -2,7 +2,7 @@
 Parses a list of twitter json messages (separated by commas) such
 as would be output by stream.py.
 
-To use this, you must create a class that extends TeetProcessor.
+To use this, you must create a class that extends TweetProcessor.
 You could create a file like this:
 
 ---------------
